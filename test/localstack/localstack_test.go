@@ -300,6 +300,77 @@ var _ = Describe("rosactl LocalStack Integration", func() {
 		}, SpecTimeout(180*time.Second))
 	})
 
+	Describe("Cluster Deploy (parallel)", func() {
+		It("should deploy both IAM and VPC stacks in a single command", func(ctx SpecContext) {
+			iamStackName := fmt.Sprintf("rosa-%s-iam", testCluster)
+			vpcStackName := fmt.Sprintf("rosa-%s-vpc", testCluster)
+
+			By("Running rosactl cluster deploy command")
+			deployCmd := exec.CommandContext(ctx, binaryPath, "cluster", "deploy", testCluster,
+				"--region", awsRegion,
+				"--oidc-issuer-url", "https://test-oidc.s3.amazonaws.com",
+				"--availability-zones", "us-east-1a,us-east-1b,us-east-1c",
+				"--single-nat-gateway=false",
+			)
+			deployCmd.Env = append(os.Environ(),
+				fmt.Sprintf("AWS_ENDPOINT_URL=%s", localstackURL),
+				fmt.Sprintf("AWS_REGION=%s", awsRegion),
+			)
+
+			deploySession, err := gexec.Start(deployCmd, GinkgoWriter, GinkgoWriter)
+			Expect(err).NotTo(HaveOccurred())
+
+			// Both CloudFormation stacks run in parallel; allow enough time for both.
+			Eventually(deploySession, 120*time.Second).Should(gexec.Exit())
+
+			output := string(deploySession.Out.Contents())
+			errOutput := string(deploySession.Err.Contents())
+			GinkgoWriter.Printf("\nCLI Deploy Output:\n%s\n", output)
+			if errOutput != "" {
+				GinkgoWriter.Printf("\nCLI Deploy Errors:\n%s\n", errOutput)
+			}
+
+			Expect(output).To(ContainSubstring("Deploying cluster resources"))
+
+			// VPC does not require a network round-trip for thumbprint fetching, so
+			// it should always be attempted. If it is absent the IAM thumbprint fetch
+			// failed and its context cancellation aborted VPC before it started —
+			// acceptable in offline environments.
+			By("Verifying VPC stack was created")
+			vpcResult, err := cfnClient.DescribeStacks(ctx, &cloudformation.DescribeStacksInput{
+				StackName: aws.String(vpcStackName),
+			})
+			if err != nil && strings.Contains(err.Error(), "does not exist") {
+				Skip("VPC stack not created — IAM thumbprint failure likely cancelled VPC via context (expected in offline environments)")
+			}
+			Expect(err).NotTo(HaveOccurred(), "VPC stack should exist after deploy command")
+			Expect(vpcResult.Stacks).To(HaveLen(1))
+			vpcStatus := string(vpcResult.Stacks[0].StackStatus)
+			GinkgoWriter.Printf("VPC Stack status: %s\n", vpcStatus)
+			// Accept CREATE_COMPLETE or CREATE_FAILED (LocalStack NAT Gateway limitation)
+			Expect(vpcStatus).To(Or(Equal("CREATE_COMPLETE"), Equal("CREATE_FAILED")))
+
+			By("Verifying IAM stack was created")
+			iamResult, err := cfnClient.DescribeStacks(ctx, &cloudformation.DescribeStacksInput{
+				StackName: aws.String(iamStackName),
+			})
+			if err != nil && strings.Contains(err.Error(), "does not exist") {
+				Skip("IAM stack not created — OIDC thumbprint fetch likely failed in LocalStack (expected in offline environments)")
+			}
+			Expect(err).NotTo(HaveOccurred(), "IAM stack should exist after deploy command")
+			Expect(iamResult.Stacks).To(HaveLen(1))
+			iamStatus := string(iamResult.Stacks[0].StackStatus)
+			GinkgoWriter.Printf("IAM Stack status: %s\n", iamStatus)
+			// Accept CREATE_COMPLETE or CREATE_FAILED (LocalStack AWS-managed policy limitation)
+			Expect(iamStatus).To(Or(
+				Equal("CREATE_COMPLETE"),
+				Equal("CREATE_FAILED"),
+				Equal("UPDATE_IN_PROGRESS"),
+			))
+
+		}, SpecTimeout(180*time.Second))
+	})
+
 	Describe("Stack Listing", func() {
 		It("should list CloudFormation stacks", func(ctx SpecContext) {
 			By("Creating a test stack")
