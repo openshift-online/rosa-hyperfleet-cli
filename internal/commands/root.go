@@ -5,6 +5,7 @@ import (
 	"os"
 
 	"github.com/openshift-online/rosa-regional-platform-cli/internal/commands/bootstrap"
+	"github.com/openshift-online/rosa-regional-platform-cli/internal/commands/cluster"
 	"github.com/openshift-online/rosa-regional-platform-cli/internal/commands/clusteriam"
 	"github.com/openshift-online/rosa-regional-platform-cli/internal/commands/clustervpc"
 	"github.com/openshift-online/rosa-regional-platform-cli/internal/commands/handler"
@@ -34,6 +35,7 @@ func init() {
 	rootCmd.PersistentFlags().BoolVarP(&verbose, "verbose", "v", false, "Enable verbose output")
 
 	rootCmd.AddCommand(bootstrap.NewBootstrapCommand())
+	rootCmd.AddCommand(cluster.NewClusterCommand())
 	rootCmd.AddCommand(clusteriam.NewClusterIAMCommand())
 	rootCmd.AddCommand(clustervpc.NewClusterVPCCommand())
 	rootCmd.AddCommand(handler.NewHandlerCommand())
