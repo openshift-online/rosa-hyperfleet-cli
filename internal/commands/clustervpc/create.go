@@ -24,7 +24,8 @@ type CreateOptions struct {
 }
 
 // AddFlags registers the VPC-specific flags on cmd bound to opts.
-// The shared --region flag is intentionally excluded; callers add it once.
+// --region is intentionally excluded: it is a persistent root-level flag
+// inherited by all commands.
 func AddFlags(cmd *cobra.Command, opts *CreateOptions) {
 	cmd.Flags().StringVar(&opts.VpcCidr, "vpc-cidr", "10.0.0.0/16", "CIDR block for the VPC")
 	cmd.Flags().StringVar(&opts.PublicSubnetCidrs, "public-subnet-cidrs", "10.0.101.0/24,10.0.102.0/24,10.0.103.0/24", "Comma-separated public subnet CIDRs")
@@ -62,14 +63,12 @@ Example:
 		Args: cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			opts.ClusterName = args[0]
+			opts.Region, _ = cmd.Flags().GetString("region")
 			return RunCreate(cmd.Context(), opts)
 		},
 	}
 
 	AddFlags(cmd, opts)
-	cmd.Flags().StringVar(&opts.Region, "region", "", "AWS region (required)")
-
-	cmd.MarkFlagRequired("region")
 
 	return cmd
 }
@@ -77,6 +76,10 @@ Example:
 // RunCreate executes the VPC creation workflow. It is exported so that
 // composite commands can invoke it directly.
 func RunCreate(ctx context.Context, opts *CreateOptions) error {
+	if opts.Region == "" {
+		return fmt.Errorf("--region is required")
+	}
+
 	fmt.Printf("🌐 Creating cluster VPC resources for: %s\n", opts.ClusterName)
 	fmt.Printf("   Region: %s\n", opts.Region)
 	fmt.Printf("   VPC CIDR: %s\n", opts.VpcCidr)

@@ -40,16 +40,14 @@ Example:
 		Args: cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			opts.clusterName = args[0]
+			opts.region, _ = cmd.Flags().GetString("region")
 			return runDeploy(cmd.Context(), opts)
 		},
 	}
 
-	// --region is shared between IAM and VPC; add it once here.
-	cmd.Flags().StringVar(&opts.region, "region", "", "AWS region (required)")
-	cmd.MarkFlagRequired("region")
-
 	// Delegate flag registration to each sub-command package so this list
 	// never diverges from the individual create commands.
+	// --region is inherited from the root persistent flag; no need to add it here.
 	cmdiam.AddFlags(cmd, &opts.iam)
 	cmdvpc.AddFlags(cmd, &opts.vpc)
 
@@ -65,6 +63,10 @@ type deployResult struct {
 }
 
 func runDeploy(ctx context.Context, opts *deployOptions) error {
+	if opts.region == "" {
+		return fmt.Errorf("--region is required")
+	}
+
 	// Wire shared fields into the sub-options before dispatch.
 	opts.iam.ClusterName = opts.clusterName
 	opts.iam.Region = opts.region

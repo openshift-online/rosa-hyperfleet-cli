@@ -21,7 +21,8 @@ type CreateOptions struct {
 }
 
 // AddFlags registers the IAM-specific flags on cmd bound to opts.
-// The shared --region flag is intentionally excluded; callers add it once.
+// --region is intentionally excluded: it is a persistent root-level flag
+// inherited by all commands.
 func AddFlags(cmd *cobra.Command, opts *CreateOptions) {
 	cmd.Flags().StringVar(&opts.OIDCIssuerURL, "oidc-issuer-url", "", "OIDC issuer URL from Management Cluster (required)")
 }
@@ -48,15 +49,14 @@ Example:
 		Args: cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			opts.ClusterName = args[0]
+			opts.Region, _ = cmd.Flags().GetString("region")
 			return RunCreate(cmd.Context(), opts)
 		},
 	}
 
 	AddFlags(cmd, opts)
-	cmd.Flags().StringVar(&opts.Region, "region", "", "AWS region (required)")
 
 	cmd.MarkFlagRequired("oidc-issuer-url")
-	cmd.MarkFlagRequired("region")
 
 	return cmd
 }
@@ -67,6 +67,10 @@ func RunCreate(ctx context.Context, opts *CreateOptions) error {
 	// Validate cluster name
 	if err := validateClusterName(opts.ClusterName); err != nil {
 		return err
+	}
+
+	if opts.Region == "" {
+		return fmt.Errorf("--region is required")
 	}
 
 	// Validate OIDC issuer URL
