@@ -82,19 +82,32 @@ func runDeploy(ctx context.Context, opts *deployOptions) error {
 	fmt.Println("Running IAM and VPC deployments in parallel...")
 	fmt.Println()
 
+	// Use a cancellable context so that if one deployment fails the other is
+	// aborted rather than running to completion unnecessarily.
+	ctx, cancel := context.WithCancel(ctx)
+	defer cancel()
+
 	results := make(chan deployResult, 2)
 	var wg sync.WaitGroup
 
 	wg.Add(1)
 	go func() {
 		defer wg.Done()
-		results <- deployResult{"IAM", cmdiam.RunCreate(ctx, &opts.iam)}
+		err := cmdiam.RunCreate(ctx, &opts.iam)
+		if err != nil {
+			cancel()
+		}
+		results <- deployResult{"IAM", err}
 	}()
 
 	wg.Add(1)
 	go func() {
 		defer wg.Done()
-		results <- deployResult{"VPC", cmdvpc.RunCreate(ctx, &opts.vpc)}
+		err := cmdvpc.RunCreate(ctx, &opts.vpc)
+		if err != nil {
+			cancel()
+		}
+		results <- deployResult{"VPC", err}
 	}()
 
 	go func() {
