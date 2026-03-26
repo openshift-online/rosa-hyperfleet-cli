@@ -6,22 +6,19 @@ import (
 	"strings"
 	"sync"
 
-	"github.com/aws/aws-sdk-go-v2/config"
-	"github.com/openshift-online/rosa-regional-platform-cli/internal/crypto"
-	"github.com/openshift-online/rosa-regional-platform-cli/internal/services/clusteriam"
-	"github.com/openshift-online/rosa-regional-platform-cli/internal/services/clustervpc"
+	cmdiam "github.com/openshift-online/rosa-regional-platform-cli/internal/commands/clusteriam"
+	cmdvpc "github.com/openshift-online/rosa-regional-platform-cli/internal/commands/clustervpc"
 	"github.com/spf13/cobra"
 )
 
+// deployOptions composes the individual command option types so that flag
+// definitions are owned exactly once — in the clusteriam and clustervpc
+// packages — and automatically inherited here.
 type deployOptions struct {
-	clusterName        string
-	region             string
-	oidcIssuerURL      string
-	vpcCidr            string
-	publicSubnetCidrs  string
-	privateSubnetCidrs string
-	availabilityZones  string
-	singleNatGateway   bool
+	clusterName string
+	region      string
+	iam         cmdiam.CreateOptions
+	vpc         cmdvpc.CreateOptions
 }
 
 func newDeployCommand() *cobra.Command {
@@ -47,16 +44,16 @@ Example:
 		},
 	}
 
-	cmd.Flags().StringVar(&opts.oidcIssuerURL, "oidc-issuer-url", "", "OIDC issuer URL from Management Cluster (required)")
+	// --region is shared between IAM and VPC; add it once here.
 	cmd.Flags().StringVar(&opts.region, "region", "", "AWS region (required)")
-	cmd.Flags().StringVar(&opts.availabilityZones, "availability-zones", "", "Comma-separated availability zones, 3 required (required)")
-	cmd.Flags().StringVar(&opts.vpcCidr, "vpc-cidr", "10.0.0.0/16", "CIDR block for the VPC")
-	cmd.Flags().StringVar(&opts.publicSubnetCidrs, "public-subnet-cidrs", "10.0.101.0/24,10.0.102.0/24,10.0.103.0/24", "Comma-separated public subnet CIDRs")
-	cmd.Flags().StringVar(&opts.privateSubnetCidrs, "private-subnet-cidrs", "10.0.0.0/19,10.0.32.0/19,10.0.64.0/19", "Comma-separated private subnet CIDRs")
-	cmd.Flags().BoolVar(&opts.singleNatGateway, "single-nat-gateway", true, "Use single NAT gateway (true=cost savings, false=HA per-AZ)")
+	cmd.MarkFlagRequired("region")
+
+	// Delegate flag registration to each sub-command package so this list
+	// never diverges from the individual create commands.
+	cmdiam.AddFlags(cmd, &opts.iam)
+	cmdvpc.AddFlags(cmd, &opts.vpc)
 
 	cmd.MarkFlagRequired("oidc-issuer-url")
-	cmd.MarkFlagRequired("region")
 	cmd.MarkFlagRequired("availability-zones")
 
 	return cmd
@@ -68,87 +65,34 @@ type deployResult struct {
 }
 
 func runDeploy(ctx context.Context, opts *deployOptions) error {
-	if !strings.HasPrefix(opts.oidcIssuerURL, "https://") {
-		return fmt.Errorf("OIDC issuer URL must start with https://")
-	}
-
-	azs := strings.Split(opts.availabilityZones, ",")
-	if len(azs) < 3 {
-		return fmt.Errorf("at least 3 availability zones are required, got %d", len(azs))
-	}
-
-	publicSubnets := strings.Split(opts.publicSubnetCidrs, ",")
-	privateSubnets := strings.Split(opts.privateSubnetCidrs, ",")
+	// Wire shared fields into the sub-options before dispatch.
+	opts.iam.ClusterName = opts.clusterName
+	opts.iam.Region = opts.region
+	opts.vpc.ClusterName = opts.clusterName
+	opts.vpc.Region = opts.region
 
 	fmt.Printf("Deploying cluster resources for: %s\n", opts.clusterName)
 	fmt.Printf("  Region:             %s\n", opts.region)
-	fmt.Printf("  OIDC Issuer:        %s\n", opts.oidcIssuerURL)
-	fmt.Printf("  VPC CIDR:           %s\n", opts.vpcCidr)
-	fmt.Printf("  Availability Zones: %s\n", opts.availabilityZones)
+	fmt.Printf("  OIDC Issuer:        %s\n", opts.iam.OIDCIssuerURL)
+	fmt.Printf("  VPC CIDR:           %s\n", opts.vpc.VpcCidr)
+	fmt.Printf("  Availability Zones: %s\n", opts.vpc.AvailabilityZones)
 	fmt.Println()
-
-	cfg, err := config.LoadDefaultConfig(ctx, config.WithRegion(opts.region))
-	if err != nil {
-		return fmt.Errorf("failed to load AWS config: %w", err)
-	}
+	fmt.Println("Running IAM and VPC deployments in parallel...")
+	fmt.Println()
 
 	results := make(chan deployResult, 2)
 	var wg sync.WaitGroup
 
-	// IAM deployment goroutine
 	wg.Add(1)
 	go func() {
 		defer wg.Done()
-
-		fmt.Println("[IAM] Fetching TLS thumbprint from OIDC issuer...")
-		thumbprint, err := crypto.GetOIDCThumbprint(ctx, opts.oidcIssuerURL)
-		if err != nil {
-			results <- deployResult{"IAM", fmt.Errorf("failed to fetch TLS thumbprint: %w", err)}
-			return
-		}
-
-		iamReq := &clusteriam.CreateIAMRequest{
-			ClusterName:    opts.clusterName,
-			OIDCIssuerURL:  opts.oidcIssuerURL,
-			OIDCThumbprint: thumbprint,
-			AWSConfig:      cfg,
-		}
-
-		fmt.Printf("[IAM] Creating CloudFormation stack: rosa-%s-iam\n", opts.clusterName)
-		resp, err := clusteriam.CreateIAM(ctx, iamReq)
-		if err != nil {
-			results <- deployResult{"IAM", err}
-			return
-		}
-
-		fmt.Printf("[IAM] Done. Stack ID: %s\n", resp.StackID)
-		results <- deployResult{"IAM", nil}
+		results <- deployResult{"IAM", cmdiam.RunCreate(ctx, &opts.iam)}
 	}()
 
-	// VPC deployment goroutine
 	wg.Add(1)
 	go func() {
 		defer wg.Done()
-
-		vpcReq := &clustervpc.CreateVPCRequest{
-			ClusterName:        opts.clusterName,
-			VpcCidr:            opts.vpcCidr,
-			PublicSubnetCidrs:  publicSubnets,
-			PrivateSubnetCidrs: privateSubnets,
-			AvailabilityZones:  azs,
-			SingleNatGateway:   opts.singleNatGateway,
-			AWSConfig:          cfg,
-		}
-
-		fmt.Printf("[VPC] Creating CloudFormation stack: rosa-%s-vpc\n", opts.clusterName)
-		resp, err := clustervpc.CreateVPC(ctx, vpcReq)
-		if err != nil {
-			results <- deployResult{"VPC", err}
-			return
-		}
-
-		fmt.Printf("[VPC] Done. Stack ID: %s\n", resp.StackID)
-		results <- deployResult{"VPC", nil}
+		results <- deployResult{"VPC", cmdvpc.RunCreate(ctx, &opts.vpc)}
 	}()
 
 	go func() {

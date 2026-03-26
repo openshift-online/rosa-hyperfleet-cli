@@ -11,14 +11,23 @@ import (
 	"github.com/spf13/cobra"
 )
 
-type createOptions struct {
-	clusterName   string
-	oidcIssuerURL string
-	region        string
+// CreateOptions holds options for the cluster-iam create command.
+// It is exported so that composite commands (e.g. cluster deploy) can reuse
+// the same flag definitions without duplicating them.
+type CreateOptions struct {
+	ClusterName   string
+	OIDCIssuerURL string
+	Region        string
+}
+
+// AddFlags registers the IAM-specific flags on cmd bound to opts.
+// The shared --region flag is intentionally excluded; callers add it once.
+func AddFlags(cmd *cobra.Command, opts *CreateOptions) {
+	cmd.Flags().StringVar(&opts.OIDCIssuerURL, "oidc-issuer-url", "", "OIDC issuer URL from Management Cluster (required)")
 }
 
 func newCreateCommand() *cobra.Command {
-	opts := &createOptions{}
+	opts := &CreateOptions{}
 
 	cmd := &cobra.Command{
 		Use:   "create CLUSTER_NAME",
@@ -38,13 +47,13 @@ Example:
     --region us-east-1`,
 		Args: cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			opts.clusterName = args[0]
-			return runCreate(cmd.Context(), opts)
+			opts.ClusterName = args[0]
+			return RunCreate(cmd.Context(), opts)
 		},
 	}
 
-	cmd.Flags().StringVar(&opts.oidcIssuerURL, "oidc-issuer-url", "", "OIDC issuer URL from Management Cluster (required)")
-	cmd.Flags().StringVar(&opts.region, "region", "", "AWS region (required)")
+	AddFlags(cmd, opts)
+	cmd.Flags().StringVar(&opts.Region, "region", "", "AWS region (required)")
 
 	cmd.MarkFlagRequired("oidc-issuer-url")
 	cmd.MarkFlagRequired("region")
@@ -52,26 +61,28 @@ Example:
 	return cmd
 }
 
-func runCreate(ctx context.Context, opts *createOptions) error {
+// RunCreate executes the IAM creation workflow. It is exported so that
+// composite commands can invoke it directly.
+func RunCreate(ctx context.Context, opts *CreateOptions) error {
 	// Validate cluster name
-	if err := validateClusterName(opts.clusterName); err != nil {
+	if err := validateClusterName(opts.ClusterName); err != nil {
 		return err
 	}
 
 	// Validate OIDC issuer URL
-	if !strings.HasPrefix(opts.oidcIssuerURL, "https://") {
+	if !strings.HasPrefix(opts.OIDCIssuerURL, "https://") {
 		return fmt.Errorf("OIDC issuer URL must start with https://")
 	}
 
 	fmt.Println("🔐 Creating cluster IAM resources...")
-	fmt.Printf("   Cluster: %s\n", opts.clusterName)
-	fmt.Printf("   OIDC Issuer: %s\n", opts.oidcIssuerURL)
-	fmt.Printf("   Region: %s\n", opts.region)
+	fmt.Printf("   Cluster: %s\n", opts.ClusterName)
+	fmt.Printf("   OIDC Issuer: %s\n", opts.OIDCIssuerURL)
+	fmt.Printf("   Region: %s\n", opts.Region)
 	fmt.Println()
 
 	// Fetch TLS thumbprint
 	fmt.Println("🔍 Fetching TLS thumbprint from OIDC issuer...")
-	thumbprint, err := crypto.GetOIDCThumbprint(ctx, opts.oidcIssuerURL)
+	thumbprint, err := crypto.GetOIDCThumbprint(ctx, opts.OIDCIssuerURL)
 	if err != nil {
 		return fmt.Errorf("failed to fetch TLS thumbprint: %w", err)
 	}
@@ -79,21 +90,21 @@ func runCreate(ctx context.Context, opts *createOptions) error {
 	fmt.Println()
 
 	// Load AWS config
-	cfg, err := config.LoadDefaultConfig(ctx, config.WithRegion(opts.region))
+	cfg, err := config.LoadDefaultConfig(ctx, config.WithRegion(opts.Region))
 	if err != nil {
 		return fmt.Errorf("failed to load AWS config: %w", err)
 	}
 
 	// Create service request
 	req := &clusteriam.CreateIAMRequest{
-		ClusterName:    opts.clusterName,
-		OIDCIssuerURL:  opts.oidcIssuerURL,
+		ClusterName:    opts.ClusterName,
+		OIDCIssuerURL:  opts.OIDCIssuerURL,
 		OIDCThumbprint: thumbprint,
 		AWSConfig:      cfg,
 	}
 
 	fmt.Println("📄 Preparing IAM CloudFormation operation...")
-	fmt.Printf("☁️  Creating or updating CloudFormation stack: rosa-%s-iam\n", opts.clusterName)
+	fmt.Printf("☁️  Creating or updating CloudFormation stack: rosa-%s-iam\n", opts.ClusterName)
 	fmt.Println("   This may take several minutes...")
 	fmt.Println()
 
