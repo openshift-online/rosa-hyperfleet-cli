@@ -57,6 +57,7 @@ var _ = Describe("Lambda Handler LocalStack Integration", func() {
 		// Generate unique test cluster name
 		testCluster = fmt.Sprintf("lambda-test-%d", time.Now().Unix())
 		functionName = fmt.Sprintf("rosa-lambda-test-%d", time.Now().Unix())
+		repositoryName = fmt.Sprintf("rosa-lambda-repo-%d", time.Now().Unix())
 
 		// Create AWS clients pointing to LocalStack
 		cfg, err := config.LoadDefaultConfig(ctx,

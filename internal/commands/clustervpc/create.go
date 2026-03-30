@@ -10,18 +10,32 @@ import (
 	"github.com/spf13/cobra"
 )
 
-type createOptions struct {
-	clusterName        string
-	region             string
-	vpcCidr            string
-	publicSubnetCidrs  string
-	privateSubnetCidrs string
-	availabilityZones  string
-	singleNatGateway   bool
+// CreateOptions holds options for the cluster-vpc create command.
+// It is exported so that composite commands (e.g. cluster deploy) can reuse
+// the same flag definitions without duplicating them.
+type CreateOptions struct {
+	ClusterName        string
+	Region             string
+	VpcCidr            string
+	PublicSubnetCidrs  string
+	PrivateSubnetCidrs string
+	AvailabilityZones  string
+	SingleNatGateway   bool
+}
+
+// AddFlags registers the VPC-specific flags on cmd bound to opts.
+// --region is intentionally excluded: it is a persistent root-level flag
+// inherited by all commands.
+func AddFlags(cmd *cobra.Command, opts *CreateOptions) {
+	cmd.Flags().StringVar(&opts.VpcCidr, "vpc-cidr", "10.0.0.0/16", "CIDR block for the VPC")
+	cmd.Flags().StringVar(&opts.PublicSubnetCidrs, "public-subnet-cidrs", "10.0.101.0/24,10.0.102.0/24,10.0.103.0/24", "Comma-separated public subnet CIDRs")
+	cmd.Flags().StringVar(&opts.PrivateSubnetCidrs, "private-subnet-cidrs", "10.0.0.0/19,10.0.32.0/19,10.0.64.0/19", "Comma-separated private subnet CIDRs")
+	cmd.Flags().StringVar(&opts.AvailabilityZones, "availability-zones", "", "Comma-separated availability zones (optional, auto-detected if empty)")
+	cmd.Flags().BoolVar(&opts.SingleNatGateway, "single-nat-gateway", true, "Use single NAT gateway (true=cost savings, false=HA per-AZ)")
 }
 
 func newCreateCommand() *cobra.Command {
-	opts := &createOptions{}
+	opts := &CreateOptions{}
 
 	cmd := &cobra.Command{
 		Use:   "create CLUSTER_NAME",
@@ -48,59 +62,59 @@ Example:
     --single-nat-gateway=false`,
 		Args: cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			opts.clusterName = args[0]
-			return runCreate(cmd.Context(), opts)
+			opts.ClusterName = args[0]
+			opts.Region, _ = cmd.Flags().GetString("region")
+			return RunCreate(cmd.Context(), opts)
 		},
 	}
 
-	cmd.Flags().StringVar(&opts.region, "region", "", "AWS region (required)")
-	cmd.Flags().StringVar(&opts.vpcCidr, "vpc-cidr", "10.0.0.0/16", "CIDR block for the VPC")
-	cmd.Flags().StringVar(&opts.publicSubnetCidrs, "public-subnet-cidrs", "10.0.101.0/24,10.0.102.0/24,10.0.103.0/24", "Comma-separated public subnet CIDRs")
-	cmd.Flags().StringVar(&opts.privateSubnetCidrs, "private-subnet-cidrs", "10.0.0.0/19,10.0.32.0/19,10.0.64.0/19", "Comma-separated private subnet CIDRs")
-	cmd.Flags().StringVar(&opts.availabilityZones, "availability-zones", "", "Comma-separated availability zones (optional, auto-detected if empty)")
-	cmd.Flags().BoolVar(&opts.singleNatGateway, "single-nat-gateway", true, "Use single NAT gateway (true=cost savings, false=HA per-AZ)")
-
-	cmd.MarkFlagRequired("region")
+	AddFlags(cmd, opts)
 
 	return cmd
 }
 
-func runCreate(ctx context.Context, opts *createOptions) error {
-	fmt.Printf("🌐 Creating cluster VPC resources for: %s\n", opts.clusterName)
-	fmt.Printf("   Region: %s\n", opts.region)
-	fmt.Printf("   VPC CIDR: %s\n", opts.vpcCidr)
-	fmt.Printf("   Single NAT Gateway: %t\n", opts.singleNatGateway)
+// RunCreate executes the VPC creation workflow. It is exported so that
+// composite commands can invoke it directly.
+func RunCreate(ctx context.Context, opts *CreateOptions) error {
+	if opts.Region == "" {
+		return fmt.Errorf("--region is required")
+	}
+
+	fmt.Printf("🌐 Creating cluster VPC resources for: %s\n", opts.ClusterName)
+	fmt.Printf("   Region: %s\n", opts.Region)
+	fmt.Printf("   VPC CIDR: %s\n", opts.VpcCidr)
+	fmt.Printf("   Single NAT Gateway: %t\n", opts.SingleNatGateway)
 	fmt.Println()
 
 	// Load AWS config
-	cfg, err := config.LoadDefaultConfig(ctx, config.WithRegion(opts.region))
+	cfg, err := config.LoadDefaultConfig(ctx, config.WithRegion(opts.Region))
 	if err != nil {
 		return fmt.Errorf("failed to load AWS config: %w", err)
 	}
 
 	// Parse CIDR lists
-	publicSubnets := strings.Split(opts.publicSubnetCidrs, ",")
-	privateSubnets := strings.Split(opts.privateSubnetCidrs, ",")
+	publicSubnets := strings.Split(opts.PublicSubnetCidrs, ",")
+	privateSubnets := strings.Split(opts.PrivateSubnetCidrs, ",")
 
 	// Parse availability zones if provided
 	var azs []string
-	if opts.availabilityZones != "" {
-		azs = strings.Split(opts.availabilityZones, ",")
+	if opts.AvailabilityZones != "" {
+		azs = strings.Split(opts.AvailabilityZones, ",")
 	}
 
 	// Create service request
 	req := &clustervpc.CreateVPCRequest{
-		ClusterName:        opts.clusterName,
-		VpcCidr:            opts.vpcCidr,
+		ClusterName:        opts.ClusterName,
+		VpcCidr:            opts.VpcCidr,
 		PublicSubnetCidrs:  publicSubnets,
 		PrivateSubnetCidrs: privateSubnets,
 		AvailabilityZones:  azs,
-		SingleNatGateway:   opts.singleNatGateway,
+		SingleNatGateway:   opts.SingleNatGateway,
 		AWSConfig:          cfg,
 	}
 
 	fmt.Println("📄 Loading CloudFormation template...")
-	fmt.Printf("☁️  Creating CloudFormation stack: rosa-%s-vpc\n", opts.clusterName)
+	fmt.Printf("☁️  Creating CloudFormation stack: rosa-%s-vpc\n", opts.ClusterName)
 	fmt.Println("   This may take several minutes...")
 	fmt.Println()
 
