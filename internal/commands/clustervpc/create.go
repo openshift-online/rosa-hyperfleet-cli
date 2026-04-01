@@ -6,6 +6,7 @@ import (
 	"strings"
 
 	"github.com/aws/aws-sdk-go-v2/config"
+	"github.com/aws/aws-sdk-go-v2/service/ec2"
 	"github.com/openshift-online/rosa-regional-platform-cli/internal/services/clustervpc"
 	"github.com/spf13/cobra"
 )
@@ -82,10 +83,29 @@ func runCreate(ctx context.Context, opts *createOptions) error {
 	publicSubnets := strings.Split(opts.publicSubnetCidrs, ",")
 	privateSubnets := strings.Split(opts.privateSubnetCidrs, ",")
 
-	// Parse availability zones if provided
+	// Parse availability zones if provided, otherwise auto-detect from AWS
 	var azs []string
 	if opts.availabilityZones != "" {
 		azs = strings.Split(opts.availabilityZones, ",")
+	} else {
+		fmt.Println("🔍 Auto-detecting availability zones...")
+		ec2Client := ec2.NewFromConfig(cfg)
+		out, err := ec2Client.DescribeAvailabilityZones(ctx, &ec2.DescribeAvailabilityZonesInput{})
+		if err != nil {
+			return fmt.Errorf("failed to detect availability zones: %w", err)
+		}
+		for _, az := range out.AvailabilityZones {
+			if az.ZoneName != nil {
+				azs = append(azs, *az.ZoneName)
+			}
+			if len(azs) == 3 {
+				break
+			}
+		}
+		if len(azs) < 3 {
+			return fmt.Errorf("region %s has fewer than 3 availability zones", opts.region)
+		}
+		fmt.Printf("   Using AZs: %s\n", strings.Join(azs, ", "))
 	}
 
 	// Create service request
