@@ -41,7 +41,7 @@ func ensureConfigDir() error {
 	}
 
 	configDirPath := filepath.Join(home, configDir)
-	if err := os.MkdirAll(configDirPath, 0755); err != nil {
+	if err := os.MkdirAll(configDirPath, 0700); err != nil {
 		return fmt.Errorf("failed to create config directory: %w", err)
 	}
 

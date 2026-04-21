@@ -6,7 +6,9 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"net/url"
 	"os"
+	"strconv"
 	"text/tabwriter"
 	"time"
 
@@ -91,11 +93,15 @@ func runList(ctx context.Context, opts *listOptions) error {
 		return err
 	}
 
-	// Build the API endpoint URL
-	endpoint := fmt.Sprintf("%s/api/v0/clusters?limit=%d&offset=%d", baseURL, opts.limit, opts.offset)
-	if opts.status != "" {
-		endpoint = fmt.Sprintf("%s&status=%s", endpoint, opts.status)
+	// Build the API endpoint URL with properly encoded query parameters
+	params := url.Values{
+		"limit":  {strconv.Itoa(opts.limit)},
+		"offset": {strconv.Itoa(opts.offset)},
 	}
+	if opts.status != "" {
+		params.Set("status", opts.status)
+	}
+	endpoint := fmt.Sprintf("%s/api/v0/clusters?%s", baseURL, params.Encode())
 
 	// Load AWS config for SigV4 signing
 	cfg, err := aws.NewConfig(ctx)

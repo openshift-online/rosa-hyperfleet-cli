@@ -44,9 +44,9 @@ func runLogin(opts *loginOptions) error {
 		return fmt.Errorf("invalid URL: %w", err)
 	}
 
-	// Enforce http or https scheme
-	if parsedURL.Scheme != "http" && parsedURL.Scheme != "https" {
-		return fmt.Errorf("URL scheme must be http or https")
+	// Enforce https scheme only — plain http transmits SigV4 credentials unencrypted
+	if parsedURL.Scheme != "https" {
+		return fmt.Errorf("URL scheme must be https")
 	}
 
 	if parsedURL.Host == "" {

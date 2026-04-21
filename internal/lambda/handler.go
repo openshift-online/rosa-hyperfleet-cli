@@ -35,7 +35,7 @@ type Response struct {
 
 // Handler is the Lambda function handler
 func Handler(ctx context.Context, event Event) (Response, error) {
-	fmt.Printf("Received event: %+v\n", event)
+	fmt.Printf("Received event: action=%s cluster_name=%s\n", event.Action, event.ClusterName)
 
 	switch event.Action {
 	case "apply-cluster-iam":

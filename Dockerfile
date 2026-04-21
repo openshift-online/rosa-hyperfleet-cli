@@ -17,7 +17,7 @@ COPY . .
 RUN CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -ldflags="-w -s" -o rosactl ./cmd/rosactl
 
 # Runtime stage - UBI minimal for smaller image size
-FROM registry.access.redhat.com/ubi9/ubi-minimal:latest
+FROM registry.access.redhat.com/ubi9/ubi-minimal:9.5
 
 # Install AWS Lambda Runtime Interface Emulator (for local testing)
 # and ca-certificates for TLS connections
