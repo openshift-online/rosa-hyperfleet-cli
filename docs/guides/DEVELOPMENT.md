@@ -3,7 +3,7 @@
 ## Getting Started
 
 ### Prerequisites
-- **Go 1.24+** - Required for building from source
+- **Go 1.25+** - Required for building from source
 - **Make** - For using Makefile targets
 - **Docker or Podman** - Optional, for LocalStack testing and building Lambda container images
 - **Docker Compose** - Optional, for LocalStack testing

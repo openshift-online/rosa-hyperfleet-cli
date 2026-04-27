@@ -2,7 +2,7 @@
 
 CLI tool (`rosactl`) for managing AWS infrastructure (VPC, IAM, OIDC) for ROSA hosted clusters via CloudFormation stacks. Optionally deployable as a Lambda function for event-driven workflows.
 
-**Tech stack**: Go 1.24, Cobra, AWS SDK v2, CloudFormation, Ginkgo/Gomega
+**Tech stack**: Go 1.25, Cobra, AWS SDK v2, CloudFormation, Ginkgo/Gomega
 
 ## Key Directories
 

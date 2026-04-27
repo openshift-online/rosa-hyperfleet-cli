@@ -14,7 +14,7 @@ These tests verify that the CLI correctly creates AWS resources (VPC, IAM, Cloud
 - **LocalStack Pro** - Lambda container execution tests require LocalStack Pro
   - Set `export LOCALSTACK_AUTH_TOKEN=your-token-here` before running, or create a `.env` file containing `LOCALSTACK_AUTH_TOKEN=your-token-here`
   - A free LocalStack Pro trial or paid subscription provides the auth token
-- Go 1.24+
+- Go 1.25+
 - Ginkgo CLI (install if not present):
   ```bash
   go install github.com/onsi/ginkgo/v2/ginkgo@latest

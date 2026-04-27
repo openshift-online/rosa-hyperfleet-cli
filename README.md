@@ -67,7 +67,7 @@ rosactl version
 
 ## Prerequisites
 
-- **Go 1.24+** (for building from source)
+- **Go 1.25+** (for building from source)
 - **AWS credentials** configured via:
   - `~/.aws/credentials` file, or
   - Environment variables (`AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY`), or
