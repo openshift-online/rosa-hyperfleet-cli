@@ -14,9 +14,6 @@ updates:
       aws-sdk:
         patterns:
           - "github.com/aws/*"
-      all-go-deps:
-        patterns:
-          - "*"
   - package-ecosystem: "docker"
     directory: "/"
     schedule:
