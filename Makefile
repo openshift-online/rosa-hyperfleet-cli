@@ -61,9 +61,9 @@ clean:
 	@rm -f rosactl
 	@echo "✓ Clean complete"
 
-install: build
-	@echo "Installing $(BINARY_NAME) to $(INSTALL_DIR)..."
-	@cp $(BUILD_DIR)/$(BINARY_NAME) $(INSTALL_DIR)/$(BINARY_NAME)
+install:
+	@echo "Installing $(BINARY_NAME) to GOPATH/bin..."
+	@go install $(LDFLAGS) ./cmd/rosactl/
 	@echo "✓ Installation complete"
 
 tidy:
