@@ -34,7 +34,7 @@ func newCreateCommand() *cobra.Command {
 	opts := &createOptions{
 		region:             "us-east-1",
 		targetProjectID:    "",
-		version:            "4.14",
+		version:            "4.22",
 		computeReplicas:    3,
 		computeMachineType: "m5.xlarge",
 		placementCluster:   "",
