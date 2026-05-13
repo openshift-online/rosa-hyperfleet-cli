@@ -42,9 +42,17 @@ func (c *Client) CreateStack(ctx context.Context, params *CreateStackParams) (*S
 		input.Parameters = cfParams
 	}
 
-	_, err := c.cfn.CreateStack(ctx, input)
+	resp, err := c.cfn.CreateStack(ctx, input)
 	if err != nil {
 		return nil, wrapError(err)
+	}
+
+	// If no-wait is set, return immediately without waiting for completion
+	if params.NoWait {
+		return &StackOutput{
+			StackID: aws.ToString(resp.StackId),
+			Outputs: nil, // no outputs available yet
+		}, nil
 	}
 
 	// Wait for stack creation to complete
@@ -84,9 +92,17 @@ func (c *Client) UpdateStack(ctx context.Context, params *UpdateStackParams) (*S
 		input.Parameters = cfParams
 	}
 
-	_, err := c.cfn.UpdateStack(ctx, input)
+	resp, err := c.cfn.UpdateStack(ctx, input)
 	if err != nil {
 		return nil, wrapError(err)
+	}
+
+	// If no-wait is set, return immediately without waiting for completion
+	if params.NoWait {
+		return &StackOutput{
+			StackID: aws.ToString(resp.StackId),
+			Outputs: nil, // no outputs available yet
+		}, nil
 	}
 
 	// Wait for stack update to complete
@@ -103,12 +119,17 @@ func (c *Client) UpdateStack(ctx context.Context, params *UpdateStackParams) (*S
 }
 
 // DeleteStack deletes a CloudFormation stack
-func (c *Client) DeleteStack(ctx context.Context, stackName string, waitTimeout time.Duration) error {
+func (c *Client) DeleteStack(ctx context.Context, stackName string, waitTimeout time.Duration, noWait bool) error {
 	_, err := c.cfn.DeleteStack(ctx, &cloudformation.DeleteStackInput{
 		StackName: aws.String(stackName),
 	})
 	if err != nil {
 		return wrapError(err)
+	}
+
+	// If no-wait is set, return immediately without waiting for deletion
+	if noWait {
+		return nil
 	}
 
 	// Wait for stack deletion to complete

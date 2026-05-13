@@ -16,6 +16,7 @@ type createOptions struct {
 	clusterName   string
 	oidcIssuerURL string
 	region        string
+	noWait        bool
 }
 
 func newCreateCommand() *cobra.Command {
@@ -56,6 +57,7 @@ Examples:
 
 	cmd.Flags().StringVar(&opts.oidcIssuerURL, "oidc-issuer-url", "", "OIDC issuer URL (optional — also creates OIDC provider if provided)")
 	cmd.Flags().StringVar(&opts.region, "region", "", "AWS region (required)")
+	cmd.Flags().BoolVar(&opts.noWait, "no-wait", false, "Return immediately without waiting for stack creation to complete")
 
 	_ = cmd.MarkFlagRequired("region")
 
@@ -99,11 +101,14 @@ func runCreate(ctx context.Context, opts *createOptions) error {
 	iamReq := &clusteriam.CreateIAMRequest{
 		ClusterName:      opts.clusterName,
 		OIDCIssuerDomain: oidcIssuerDomain,
+		NoWait:           opts.noWait,
 		AWSConfig:        cfg,
 	}
 
 	fmt.Printf("Creating or updating CloudFormation stack: rosa-%s-iam\n", opts.clusterName)
-	fmt.Println("   This may take several minutes...")
+	if !opts.noWait {
+		fmt.Println("   This may take several minutes...")
+	}
 	fmt.Println()
 
 	resp, err := clusteriam.CreateIAM(ctx, iamReq)
@@ -111,14 +116,19 @@ func runCreate(ctx context.Context, opts *createOptions) error {
 		return err
 	}
 
-	fmt.Println("Cluster IAM roles created successfully!")
-	fmt.Printf("   Stack ID: %s\n", resp.StackID)
-	fmt.Println()
+	if opts.noWait {
+		fmt.Println("Stack creation submitted!")
+		fmt.Printf("   Stack ID: %s\n", resp.StackID)
+	} else {
+		fmt.Println("Cluster IAM roles created successfully!")
+		fmt.Printf("   Stack ID: %s\n", resp.StackID)
+		fmt.Println()
 
-	if len(resp.Outputs) > 0 {
-		fmt.Println("Created Resources:")
-		for key, value := range resp.Outputs {
-			fmt.Printf("  %s: %s\n", key, value)
+		if len(resp.Outputs) > 0 {
+			fmt.Println("Created Resources:")
+			for key, value := range resp.Outputs {
+				fmt.Printf("  %s: %s\n", key, value)
+			}
 		}
 	}
 
@@ -131,11 +141,14 @@ func runCreate(ctx context.Context, opts *createOptions) error {
 		oidcReq := &clusteroidc.CreateOIDCRequest{
 			ClusterName:   opts.clusterName,
 			OIDCIssuerURL: opts.oidcIssuerURL,
+			NoWait:        opts.noWait,
 			AWSConfig:     cfg,
 		}
 
 		fmt.Printf("Creating CloudFormation stack: rosa-%s-oidc\n", opts.clusterName)
-		fmt.Println("   This may take a few minutes...")
+		if !opts.noWait {
+			fmt.Println("   This may take a few minutes...")
+		}
 		fmt.Println()
 
 		oidcResp, err := clusteroidc.CreateOIDC(ctx, oidcReq)
@@ -143,14 +156,19 @@ func runCreate(ctx context.Context, opts *createOptions) error {
 			return fmt.Errorf("IAM roles created but OIDC provider failed: %w", err)
 		}
 
-		fmt.Println("Cluster OIDC provider created successfully!")
-		fmt.Printf("   Stack ID: %s\n", oidcResp.StackID)
-		fmt.Println()
+		if opts.noWait {
+			fmt.Println("OIDC provider stack creation submitted!")
+			fmt.Printf("   Stack ID: %s\n", oidcResp.StackID)
+		} else {
+			fmt.Println("Cluster OIDC provider created successfully!")
+			fmt.Printf("   Stack ID: %s\n", oidcResp.StackID)
+			fmt.Println()
 
-		if len(oidcResp.Outputs) > 0 {
-			fmt.Println("OIDC Resources:")
-			for key, value := range oidcResp.Outputs {
-				fmt.Printf("  %s: %s\n", key, value)
+			if len(oidcResp.Outputs) > 0 {
+				fmt.Println("OIDC Resources:")
+				for key, value := range oidcResp.Outputs {
+					fmt.Printf("  %s: %s\n", key, value)
+				}
 			}
 		}
 	}

@@ -23,6 +23,7 @@ type createOptions struct {
 	functionName string
 	region       string
 	stackName    string
+	noWait       bool
 }
 
 func newCreateCommand() *cobra.Command {
@@ -49,6 +50,7 @@ Example:
 	cmd.Flags().StringVar(&opts.functionName, "function-name", defaultFunctionName, "Name of the Lambda function")
 	cmd.Flags().StringVar(&opts.region, "region", "", "AWS region (required)")
 	cmd.Flags().StringVar(&opts.stackName, "stack-name", defaultStackName, "Name of the CloudFormation stack")
+	cmd.Flags().BoolVar(&opts.noWait, "no-wait", false, "Return immediately without waiting for stack creation to complete")
 
 	_ = cmd.MarkFlagRequired("image-uri")
 	_ = cmd.MarkFlagRequired("region")
@@ -102,6 +104,7 @@ func runCreate(ctx context.Context, opts *createOptions) error {
 			},
 		},
 		WaitTimeout: defaultTimeout,
+		NoWait:      opts.noWait,
 	}
 
 	fmt.Println("📋 Creating CloudFormation stack...")
@@ -112,11 +115,16 @@ func runCreate(ctx context.Context, opts *createOptions) error {
 		return fmt.Errorf("failed to create stack: %w", err)
 	}
 
-	fmt.Println("✅ Stack created successfully!")
-	fmt.Println()
-	fmt.Println("Outputs:")
-	for key, value := range output.Outputs {
-		fmt.Printf("  %s: %s\n", key, value)
+	if opts.noWait {
+		fmt.Println("✅ Stack creation submitted!")
+		fmt.Printf("   Stack ID: %s\n", output.StackID)
+	} else {
+		fmt.Println("✅ Stack created successfully!")
+		fmt.Println()
+		fmt.Println("Outputs:")
+		for key, value := range output.Outputs {
+			fmt.Printf("  %s: %s\n", key, value)
+		}
 	}
 
 	return nil

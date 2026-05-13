@@ -12,6 +12,7 @@ import (
 type deleteOptions struct {
 	clusterName string
 	region      string
+	noWait      bool
 }
 
 func newDeleteCommand() *cobra.Command {
@@ -35,6 +36,7 @@ Example:
 	}
 
 	cmd.Flags().StringVar(&opts.region, "region", "", "AWS region (required)")
+	cmd.Flags().BoolVar(&opts.noWait, "no-wait", false, "Return immediately without waiting for stack deletion to complete")
 	_ = cmd.MarkFlagRequired("region")
 
 	return cmd
@@ -52,17 +54,24 @@ func runDelete(ctx context.Context, opts *deleteOptions) error {
 
 	req := &clusteroidc.DeleteOIDCRequest{
 		ClusterName: opts.clusterName,
+		NoWait:      opts.noWait,
 		AWSConfig:   cfg,
 	}
 
 	fmt.Printf("Deleting CloudFormation stack: rosa-%s-oidc\n", opts.clusterName)
-	fmt.Println("   This may take a few minutes...")
+	if !opts.noWait {
+		fmt.Println("   This may take a few minutes...")
+	}
 	fmt.Println()
 
 	if err := clusteroidc.DeleteOIDC(ctx, req); err != nil {
 		return err
 	}
 
-	fmt.Println("Cluster OIDC provider deleted successfully!")
+	if opts.noWait {
+		fmt.Println("Stack deletion submitted!")
+	} else {
+		fmt.Println("Cluster OIDC provider deleted successfully!")
+	}
 	return nil
 }
