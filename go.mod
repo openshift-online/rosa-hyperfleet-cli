@@ -12,7 +12,7 @@ require (
 	github.com/aws/aws-sdk-go-v2/service/iam v1.53.10
 	github.com/aws/aws-sdk-go-v2/service/lambda v1.90.1
 	github.com/aws/smithy-go v1.25.1
-	github.com/onsi/ginkgo/v2 v2.28.3
+	github.com/onsi/ginkgo/v2 v2.29.0
 	github.com/onsi/gomega v1.40.0
 	github.com/spf13/cobra v1.10.2
 )
