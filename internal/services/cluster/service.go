@@ -6,6 +6,7 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -15,6 +16,7 @@ import (
 
 	"github.com/aws/aws-sdk-go-v2/aws"
 	v4 "github.com/aws/aws-sdk-go-v2/aws/signer/v4"
+	"github.com/aws/aws-sdk-go-v2/service/sts"
 	"github.com/openshift-online/rosa-regional-platform-cli/internal/aws/cloudformation"
 )
 
@@ -52,16 +54,18 @@ type SubmitClusterResponse struct {
 	Response map[string]interface{}
 }
 
-// GenerateClusterConfig generates a cluster configuration by querying CloudFormation stacks
+// GenerateClusterConfig generates a cluster configuration by querying CloudFormation stacks.
+// If the IAM stack does not exist yet, role ARNs are computed from the cluster name and
+// AWS account ID. This enables a provisioning flow where the IAM stack is created after
+// the cluster (with the OIDC issuer URL known), avoiding an IAM trust policy UPDATE and
+// the ~10-15 min eventual consistency delay it causes.
 func GenerateClusterConfig(ctx context.Context, req *GenerateClusterConfigRequest) (*GenerateClusterConfigResponse, error) {
-	// Create CloudFormation client
 	cfnClient := cloudformation.NewClient(req.AWSConfig)
 
-	// Get IAM stack information
-	iamStackName := fmt.Sprintf("rosa-%s-iam", req.ClusterName)
-	iamStack, err := cfnClient.DescribeStack(ctx, iamStackName)
+	// Get IAM outputs: prefer real stack, fall back to computed ARNs
+	iamOutputs, err := getIAMOutputs(ctx, cfnClient, req.AWSConfig, req.ClusterName)
 	if err != nil {
-		return nil, fmt.Errorf("failed to describe IAM stack: %w", err)
+		return nil, err
 	}
 
 	// Get VPC stack information
@@ -83,7 +87,7 @@ func GenerateClusterConfig(ctx context.Context, req *GenerateClusterConfigReques
 	}
 
 	// Merge IAM outputs directly into spec with camelCase keys
-	for key, value := range iamStack.Outputs {
+	for key, value := range iamOutputs {
 		camelKey := toCamelCase(key)
 		spec[camelKey] = value
 	}
@@ -123,6 +127,58 @@ func GenerateClusterConfig(ctx context.Context, req *GenerateClusterConfigReques
 	return &GenerateClusterConfigResponse{
 		ClusterConfig: clusterObj,
 	}, nil
+}
+
+// getIAMOutputs returns IAM role ARNs either from the existing CloudFormation stack
+// or by computing them from the cluster name and AWS account ID.
+func getIAMOutputs(ctx context.Context, cfnClient *cloudformation.Client, cfg aws.Config, clusterName string) (map[string]string, error) {
+	iamStackName := fmt.Sprintf("rosa-%s-iam", clusterName)
+	iamStack, err := cfnClient.DescribeStack(ctx, iamStackName)
+	if err != nil {
+		var notFound *cloudformation.StackNotFoundError
+		if !errors.As(err, &notFound) {
+			return nil, fmt.Errorf("failed to describe IAM stack: %w", err)
+		}
+
+		accountID, stsErr := getAWSAccountID(ctx, cfg)
+		if stsErr != nil {
+			return nil, fmt.Errorf("IAM stack not found and failed to get AWS account ID: %w", stsErr)
+		}
+
+		fmt.Printf("IAM stack %s not found — computing role ARNs from account %s\n", iamStackName, accountID)
+		return computeIAMRoleARNs(clusterName, accountID), nil
+	}
+
+	return iamStack.Outputs, nil
+}
+
+func getAWSAccountID(ctx context.Context, cfg aws.Config) (string, error) {
+	stsClient := sts.NewFromConfig(cfg)
+	identity, err := stsClient.GetCallerIdentity(ctx, &sts.GetCallerIdentityInput{})
+	if err != nil {
+		return "", err
+	}
+	return aws.ToString(identity.Account), nil
+}
+
+// computeIAMRoleARNs returns the same output map that the rosa-{cluster}-iam
+// CloudFormation stack would produce. Role names match the template exactly.
+func computeIAMRoleARNs(clusterName, accountID string) map[string]string {
+	arn := func(roleName string) string {
+		return fmt.Sprintf("arn:aws:iam::%s:role/%s", accountID, roleName)
+	}
+
+	return map[string]string{
+		"IngressRoleArn":                arn(clusterName + "-ingress"),
+		"CloudControllerManagerRoleArn": arn(clusterName + "-cloud-controller-manager"),
+		"EBSCSIRoleArn":                 arn(clusterName + "-ebs-csi"),
+		"ImageRegistryRoleArn":          arn(clusterName + "-image-registry"),
+		"NetworkConfigRoleArn":          arn(clusterName + "-network-config"),
+		"ControlPlaneOperatorRoleArn":   arn(clusterName + "-control-plane-operator"),
+		"NodePoolManagementRoleArn":     arn(clusterName + "-node-pool-management"),
+		"WorkerRoleArn":                 arn(clusterName + "-ROSA-Worker-Role"),
+		"WorkerInstanceProfileName":     clusterName + "-ROSA-Worker-Role",
+	}
 }
 
 // SubmitCluster submits a cluster configuration to the platform API

@@ -128,6 +128,8 @@ func updateOIDCStack(ctx context.Context, cfnClient *cloudformation.Client, req 
 }
 
 // updateIAMTrustPolicies updates the IAM stack with the real OIDC issuer domain.
+// If the IAM stack does not exist yet (e.g. when using the deferred-IAM flow where
+// cluster-iam is created after cluster-oidc), the update is skipped.
 func updateIAMTrustPolicies(ctx context.Context, cfnClient *cloudformation.Client, clusterName, iamStackName, oidcIssuerDomain string) error {
 	params := &cloudformation.UpdateStackParams{
 		StackName:           iamStackName,
@@ -148,6 +150,11 @@ func updateIAMTrustPolicies(ctx context.Context, cfnClient *cloudformation.Clien
 		var noChanges *cloudformation.NoChangesError
 		if errors.As(err, &noChanges) {
 			return nil // domain was already set correctly
+		}
+		var notFound *cloudformation.StackNotFoundError
+		if errors.As(err, &notFound) {
+			fmt.Printf("IAM stack %s not found — skipping trust policy update (create it with 'rosactl cluster-iam create --oidc-issuer-url')\n", iamStackName)
+			return nil
 		}
 		return err
 	}
