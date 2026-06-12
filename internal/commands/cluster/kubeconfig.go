@@ -2,14 +2,27 @@ package cluster
 
 import (
 	"context"
+	_ "embed"
 	"fmt"
 	"os"
 	"path/filepath"
+	"text/template"
 
 	"github.com/openshift-online/rosa-regional-platform-cli/internal/aws"
 	"github.com/openshift-online/rosa-regional-platform-cli/internal/config"
 	"github.com/spf13/cobra"
 )
+
+//go:embed kubeconfig.tmpl
+var kubeconfigTemplate string
+
+type kubeconfigData struct {
+	Server      string
+	ClusterName string
+	RosactlPath string
+	ClusterID   string
+	Region      string
+}
 
 func newKubeconfigCommand() *cobra.Command {
 	cmd := &cobra.Command{
@@ -70,40 +83,16 @@ func runKubeconfig(ctx context.Context, nameOrID string) error {
 		rosactlPath, _ = filepath.Abs(rosactlPath)
 	}
 
-	fmt.Printf(`apiVersion: v1
-kind: Config
-clusters:
-  - cluster:
-      server: %s
-    name: %s
-users:
-  - name: %s-iam
-    user:
-      exec:
-        apiVersion: client.authentication.k8s.io/v1
-        interactiveMode: Never
-        command: %s
-        args:
-          - cluster
-          - get-token
-          - --cluster-id
-          - %s
-          - --region
-          - %s
-contexts:
-  - context:
-      cluster: %s
-      user: %s-iam
-    name: %s
-current-context: %s
-`, apiEndpoint, cluster.Name,
-		cluster.Name,
-		rosactlPath,
-		cluster.ID,
-		region,
-		cluster.Name, cluster.Name,
-		cluster.Name,
-		cluster.Name)
+	tmpl, err := template.New("kubeconfig").Parse(kubeconfigTemplate)
+	if err != nil {
+		return fmt.Errorf("failed to parse kubeconfig template: %w", err)
+	}
 
-	return nil
+	return tmpl.Execute(os.Stdout, kubeconfigData{
+		Server:      apiEndpoint,
+		ClusterName: cluster.Name,
+		RosactlPath: rosactlPath,
+		ClusterID:   cluster.ID,
+		Region:      region,
+	})
 }
