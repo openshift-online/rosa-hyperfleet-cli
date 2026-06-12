@@ -1,6 +1,7 @@
 package cluster
 
 import (
+	"bytes"
 	"context"
 	_ "embed"
 	"fmt"
@@ -15,6 +16,8 @@ import (
 
 //go:embed kubeconfig.tmpl
 var kubeconfigTemplate string
+
+var kubeconfigTmpl = template.Must(template.New("kubeconfig").Parse(kubeconfigTemplate))
 
 type kubeconfigData struct {
 	Server      string
@@ -83,16 +86,17 @@ func runKubeconfig(ctx context.Context, nameOrID string) error {
 		rosactlPath, _ = filepath.Abs(rosactlPath)
 	}
 
-	tmpl, err := template.New("kubeconfig").Parse(kubeconfigTemplate)
-	if err != nil {
-		return fmt.Errorf("failed to parse kubeconfig template: %w", err)
-	}
-
-	return tmpl.Execute(os.Stdout, kubeconfigData{
+	var buf bytes.Buffer
+	if err := kubeconfigTmpl.Execute(&buf, kubeconfigData{
 		Server:      apiEndpoint,
 		ClusterName: cluster.Name,
 		RosactlPath: rosactlPath,
 		ClusterID:   cluster.ID,
 		Region:      region,
-	})
+	}); err != nil {
+		return fmt.Errorf("failed to render kubeconfig: %w", err)
+	}
+
+	_, err = os.Stdout.Write(buf.Bytes())
+	return err
 }
