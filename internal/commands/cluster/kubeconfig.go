@@ -88,6 +88,8 @@ users:
           - get-token
           - --cluster-id
           - %s
+          - --region
+          - %s
 contexts:
   - context:
       cluster: %s
@@ -98,6 +100,7 @@ current-context: %s
 		cluster.Name,
 		rosactlPath,
 		cluster.ID,
+		region,
 		cluster.Name, cluster.Name,
 		cluster.Name,
 		cluster.Name)
