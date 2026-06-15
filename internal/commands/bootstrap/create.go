@@ -50,7 +50,7 @@ Example:
 	cmd.Flags().StringVar(&opts.functionName, "function-name", defaultFunctionName, "Name of the Lambda function")
 	cmd.Flags().StringVar(&opts.region, "region", "", "AWS region (required)")
 	cmd.Flags().StringVar(&opts.stackName, "stack-name", defaultStackName, "Name of the CloudFormation stack")
-	cmd.Flags().BoolVar(&opts.noWait, "no-wait", false, "Return immediately without waiting for stack creation to complete")
+	cmd.Flags().BoolVar(&opts.noWait, "no-wait", true, "Return immediately without waiting for stack creation to complete")
 
 	_ = cmd.MarkFlagRequired("image-uri")
 	_ = cmd.MarkFlagRequired("region")

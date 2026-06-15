@@ -35,7 +35,7 @@ Example:
 	}
 
 	cmd.Flags().StringVar(&opts.region, "region", "", "AWS region (required)")
-	cmd.Flags().BoolVar(&opts.noWait, "no-wait", false, "Return immediately without waiting for stack deletion to complete")
+	cmd.Flags().BoolVar(&opts.noWait, "no-wait", true, "Return immediately without waiting for stack deletion to complete")
 
 	_ = cmd.MarkFlagRequired("region")
 

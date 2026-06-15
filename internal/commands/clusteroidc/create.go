@@ -47,7 +47,7 @@ Example:
 	cmd.Flags().StringVar(&opts.oidcIssuerURL, "oidc-issuer-url", "", "OIDC issuer URL from the cluster (required)")
 	cmd.Flags().StringVar(&opts.oidcThumbprint, "oidc-thumbprint", "", "TLS thumbprint (optional, fetched automatically if omitted)")
 	cmd.Flags().StringVar(&opts.region, "region", "", "AWS region (required)")
-	cmd.Flags().BoolVar(&opts.noWait, "no-wait", false, "Return immediately without waiting for stack creation to complete")
+	cmd.Flags().BoolVar(&opts.noWait, "no-wait", true, "Return immediately without waiting for stack creation to complete")
 
 	_ = cmd.MarkFlagRequired("oidc-issuer-url")
 	_ = cmd.MarkFlagRequired("region")
