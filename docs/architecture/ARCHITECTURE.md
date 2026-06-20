@@ -18,100 +18,33 @@
 
 ### Primary Mode: Direct CloudFormation
 
-```
-┌─────────────────────────────────────────────────────────────────┐
-│                     Customer Environment                        │
-│                                                                 │
-│  ┌──────────────┐                                               │
-│  │   Developer  │                                               │
-│  │   Machine    │                                               │
-│  └──────┬───────┘                                               │
-│         │                                                       │
-│         │ 1. rosactl cluster-vpc create my-cluster              │
-│         │    (CLI with embedded CloudFormation templates)       │
-│         ▼                                                       │
-│  ┌──────────────────────┐                                       │
-│  │  CloudFormation      │                                       │
-│  │  Stack (VPC)         │                                       │
-│  │  rosa-my-cluster-vpc │                                       │
-│  └──────────┬───────────┘                                       │
-│             │ Creates                                           │
-│             ▼                                                   │
-│  ┌─────────────────────────────────────────┐                    │
-│  │  VPC Resources                          │                    │
-│  │  - VPC (10.0.0.0/16)                    │                    │
-│  │  - 3 Public + 3 Private Subnets         │                    │
-│  │  - Internet Gateway, NAT Gateway(s)     │                    │
-│  │  - Route Tables, Security Groups        │                    │
-│  │  - Route53 Private Hosted Zone          │                    │
-│  └─────────────────────────────────────────┘                    │
-│                                                                 │
-│         │                                                       │
-│         │ 2. rosactl cluster-iam create my-cluster              │
-│         │    --oidc-issuer-url https://d1234.cloudfront...      │
-│         ▼                                                       │
-│  ┌──────────────────────┐                                       │
-│  │  CloudFormation      │                                       │
-│  │  Stack (IAM)         │                                       │
-│  │  rosa-my-cluster-iam │                                       │
-│  └──────────┬───────────┘                                       │
-│             │ Creates                                           │
-│             ▼                                                   │
-│  ┌─────────────────────────────────────────┐                    │
-│  │  IAM Resources                          │                    │
-│  │  - IAM OIDC Provider                    │                    │
-│  │  - 7 Control Plane Roles                │                    │
-│  │  - Worker Node Role + Instance Profile  │                    │
-│  └─────────────────────────────────────────┘                    │
-│                                                                 │
-└─────────────────────────────────────────────────────────────────┘
+```mermaid
+flowchart TB
+    subgraph Customer["Customer Environment"]
+        Dev["Developer Machine"]
+        Dev -->|"1. rosactl cluster-vpc create my-cluster\n(CLI with embedded CloudFormation templates)"| VPCStack["CloudFormation Stack (VPC)\nrosa-my-cluster-vpc"]
+        VPCStack -->|Creates| VPCRes["VPC Resources\n- VPC (10.0.0.0/16)\n- 3 Public + 3 Private Subnets\n- Internet Gateway, NAT Gateway(s)\n- Route Tables, Security Groups\n- Route53 Private Hosted Zone"]
+        Dev -->|"2. rosactl cluster-iam create my-cluster\n--oidc-issuer-url https://d1234.cloudfront..."| IAMStack["CloudFormation Stack (IAM)\nrosa-my-cluster-iam"]
+        IAMStack -->|Creates| IAMRes["IAM Resources\n- IAM OIDC Provider\n- 7 Control Plane Roles\n- Worker Node Role + Instance Profile"]
+    end
 
-┌─────────────────────────────────────────────────────────────────┐
-│               Red Hat Management Cluster                        │
-│                                                                 │
-│  ┌──────────────────────────────────────┐                       │
-│  │  OIDC Issuer Infrastructure          │                       │
-│  │  - CloudFront Distribution           │                       │
-│  │  - Private S3 Bucket + OAC           │                       │
-│  │  - HyperShift-managed RSA Keys       │                       │
-│  └──────────────────────────────────────┘                       │
-│                                                                 │
-│  Customer's IAM OIDC Provider points here ──────────────────────┤
-│  (e.g., https://d1234.cloudfront.net/cluster-name)             │
-└─────────────────────────────────────────────────────────────────┘
+    subgraph RedHat["Red Hat Management Cluster"]
+        OIDC["OIDC Issuer Infrastructure\n- CloudFront Distribution\n- Private S3 Bucket + OAC\n- HyperShift-managed RSA Keys"]
+    end
+
+    IAMRes -.->|"Customer's IAM OIDC Provider points here\n(e.g., https://d1234.cloudfront.net/cluster-name)"| OIDC
 ```
 
 ### Optional Mode: Lambda for Event-Driven Workflows
 
 Lambda bootstrap is **optional** and used for CI/CD integration or event-driven automation. The same rosactl binary runs as a Lambda function via the `handler` subcommand.
 
-```text
-┌──────────────┐
-│   AWS Event  │
-│   Source     │
-└──────┬───────┘
-       │  JSON event payload
-       ▼  { "action": "apply-cluster-vpc", ... }
-┌──────────────────────┐
-│  Lambda Function     │
-│  (Container: rosactl)│
-│  CMD: ["handler"]    │
-│  - Embedded Templates│
-│  - Same Binary       │
-└──────────┬───────────┘
-           │  delegates to service layer
-           ▼
-┌──────────────────────┐
-│  Service Layer       │
-│  clustervpc /        │
-│  clusteriam          │
-└──────────┬───────────┘
-           │
-           ▼
-┌──────────────────────┐
-│  CloudFormation      │
-│  Stacks (VPC + IAM)  │
-└──────────────────────┘
+```mermaid
+flowchart TB
+    Event["AWS Event Source"]
+    Event -->|"JSON event payload\n{ action: apply-cluster-vpc, ... }"| Lambda["Lambda Function\n(Container: rosactl)\nCMD: handler\nEmbedded Templates, Same Binary"]
+    Lambda -->|"delegates to service layer"| SVC["Service Layer\nclustervpc / clusteriam"]
+    SVC --> CFN["CloudFormation\nStacks (VPC + IAM)"]
 ```
 
 ## Components

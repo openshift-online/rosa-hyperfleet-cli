@@ -142,16 +142,15 @@ You can bootstrap the Lambda infrastructure by running the command with the cont
 
 ### Diagrams
 
-✅ **Good** (Swimlane diagram):
-```markdown
-User                CLI             CloudFormation   Lambda          IAM
-  |                  |                |              |               |
-  |-- create cmd --->|                |              |               |
-  |                  |-- apply CF --->|              |               |
-  |                  |                |-- invoke --->|               |
-  |                  |                |              |-- create ---->|
-  |                  |                |              |<-- ARN -------|
-  |<--- outputs -----|                |              |               |
+✅ **Good** (Mermaid sequence diagram):
+```mermaid
+sequenceDiagram
+    User->>CLI: create cmd
+    CLI->>CloudFormation: apply CF
+    CloudFormation->>Lambda: invoke
+    Lambda->>IAM: create
+    IAM-->>Lambda: ARN
+    CLI-->>User: outputs
 ```
 
 ❌ **Bad** (Wall of text):
