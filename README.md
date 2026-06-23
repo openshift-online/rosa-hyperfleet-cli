@@ -9,6 +9,7 @@ Manages AWS infrastructure for ROSA hosted clusters including VPC networking, IA
 ## Features
 
 ### Cluster Infrastructure Management
+
 - **VPC Networking**: Create and manage VPCs, subnets, NAT gateways, and security groups for hosted clusters
 - **IAM Resources**: Create OIDC providers and IAM roles for cluster control plane and worker nodes
 - **CloudFormation-based**: All resources deployed via CloudFormation stacks for consistency and rollback support
@@ -16,11 +17,13 @@ Manages AWS infrastructure for ROSA hosted clusters including VPC networking, IA
 - **Direct execution**: No Lambda bootstrap required for basic operations
 
 ### Optional Lambda Bootstrap
+
 - **Container-based Lambda**: Deploy rosactl as a Lambda function for event-driven workflows
 - **Automated deployments**: Integrate with CI/CD pipelines and AWS event sources
 - **Same binary**: Lambda uses the same rosactl binary packaged in a container
 
 ### Developer Experience
+
 - **Semantic versioning**: Automated version management with conventional commits
 - **LocalStack testing**: Integration tests against LocalStack for CloudFormation validation
 - **Clear error messages**: User-friendly error reporting with CloudFormation event details
@@ -45,6 +48,9 @@ make install
 ### Basic Usage
 
 ```bash
+# Login to the platform API
+rosactl login --url https://api.us-east-1.example.com
+
 # Create VPC networking for a cluster
 rosactl cluster-vpc create my-cluster --region us-east-1
 
@@ -53,11 +59,23 @@ rosactl cluster-iam create my-cluster \
   --oidc-issuer-url https://oidc.example.com/my-cluster \
   --region us-east-1
 
-# List cluster stacks
+# Create OIDC provider for a cluster
+rosactl cluster-oidc create my-cluster \
+  --oidc-issuer-url https://oidc.example.com/my-cluster \
+  --region us-east-1
+
+# Create a cluster via the platform API
+rosactl cluster create my-cluster --region us-east-1
+
+# List clusters
+rosactl cluster list
+
+# Generate kubeconfig for cluster access
+rosactl cluster kubeconfig <cluster-id>
+
+# List and delete stacks
 rosactl cluster-vpc list --region us-east-1
 rosactl cluster-iam list --region us-east-1
-
-# Delete cluster resources
 rosactl cluster-vpc delete my-cluster --region us-east-1
 rosactl cluster-iam delete my-cluster --region us-east-1
 
@@ -129,6 +147,7 @@ rosactl cluster-vpc create my-cluster \
 ```
 
 **What this creates:**
+
 - VPC with configurable CIDR block (default: 10.0.0.0/16)
 - 3 public subnets across availability zones
 - 3 private subnets across availability zones
@@ -166,6 +185,7 @@ rosactl cluster-iam create my-cluster \
 ```
 
 **What this creates:**
+
 1. IAM OIDC Provider (with auto-fetched TLS thumbprint)
 2. 7 control plane IAM roles:
    - Ingress Operator Role
@@ -191,6 +211,68 @@ rosactl cluster-iam list --region us-east-1 --output json
 
 ```bash
 rosactl cluster-iam delete my-cluster --region us-east-1
+```
+
+### Cluster Management
+
+Manage ROSA hosted clusters via the Platform API (requires `rosactl login` first).
+
+#### Create Cluster
+
+```bash
+# Create from IAM/VPC stack outputs
+rosactl cluster create my-cluster --region us-east-1
+
+# Dry-run: generate configuration without submitting
+rosactl cluster create my-cluster --dry-run --region us-east-1
+```
+
+Key flags: `--region`, `--dry-run`, `--payload <file>`, `--placement <mc-name>`, `--compute-replicas`, `--compute-machine-type`, `--version`, `--multi-az`, `--output json`
+
+#### List Clusters
+
+```bash
+rosactl cluster list
+rosactl cluster list --status Ready --output json
+```
+
+#### Generate Kubeconfig
+
+```bash
+# Generate kubeconfig using rosactl as an exec credential plugin
+rosactl cluster kubeconfig <cluster-id>
+```
+
+#### Get Authentication Token
+
+```bash
+# Generate a presigned STS token for cluster authentication
+rosactl cluster get-token --cluster-id <cluster-id>
+```
+
+### Cluster OIDC Management
+
+Manage IAM OIDC providers for hosted clusters via CloudFormation.
+
+```bash
+# Create OIDC provider
+rosactl cluster-oidc create my-cluster \
+  --oidc-issuer-url https://oidc.example.com/my-cluster \
+  --region us-east-1
+
+# List OIDC stacks
+rosactl cluster-oidc list --region us-east-1
+
+# Delete OIDC provider
+rosactl cluster-oidc delete my-cluster --region us-east-1
+```
+
+### Login
+
+Configure the CLI to connect to a Platform API endpoint. Persists the URL for subsequent commands.
+
+```bash
+rosactl login --url https://api.us-east-1.example.com
 ```
 
 ### Optional: Lambda Bootstrap (Advanced)
@@ -227,6 +309,7 @@ Once deployed, the Lambda function accepts JSON event payloads:
 ```
 
 Supported `action` values:
+
 - `apply-cluster-vpc` - Create or update VPC CloudFormation stack
 - `delete-cluster-vpc` - Delete VPC stack
 - `apply-cluster-iam` - Create or update IAM CloudFormation stack
@@ -386,13 +469,19 @@ rosa-regional-platform-cli/
 ├── internal/
 │   ├── commands/                    # CLI commands
 │   │   ├── bootstrap/               # Lambda bootstrap deployment
-│   │   ├── clustervpc/              # VPC management subcommands
+│   │   ├── cluster/                 # Cluster lifecycle (create, list, kubeconfig, get-token)
 │   │   ├── clusteriam/              # IAM management subcommands
+│   │   ├── clusteroidc/             # OIDC provider management (create, delete, list)
+│   │   ├── clustervpc/              # VPC management subcommands
 │   │   ├── handler/                 # Lambda handler entrypoint command
+│   │   ├── login/                   # Platform API login
 │   │   └── version/                 # Version command
+│   ├── config/                      # CLI configuration (API URL persistence)
 │   ├── services/                    # Shared business logic
-│   │   ├── clustervpc/              # VPC service (CreateVPC, DeleteVPC)
-│   │   └── clusteriam/              # IAM service (CreateIAM, DeleteIAM)
+│   │   ├── cluster/                 # Cluster service (create, list via Platform API)
+│   │   ├── clusteriam/              # IAM service (CreateIAM, DeleteIAM)
+│   │   ├── clusteroidc/             # OIDC service (create, delete, list via CloudFormation)
+│   │   └── clustervpc/              # VPC service (CreateVPC, DeleteVPC)
 │   ├── aws/                         # AWS service clients
 │   │   └── cloudformation/          # CloudFormation client and operations
 │   ├── cloudformation/              # CloudFormation utilities
@@ -417,35 +506,25 @@ For detailed architecture documentation, see [docs/architecture/ARCHITECTURE.md]
 
 **High-level overview:**
 
-```
-┌──────────────────────────────────────────────┐
-│            rosactl CLI / Lambda Handler       │
-│         (Cobra Framework)                    │
-└───────────────┬──────────────────────────────┘
-                │
-    ┌───────────┼───────────────┐
-    │           │               │
-┌───▼────┐  ┌──▼────┐   ┌─────▼──────┐
-│VPC Mgmt│  │IAM Mgmt│  │Lambda (opt)│
-│Commands│  │Commands│  │Handler     │
-└───┬────┘  └──┬─────┘  └─────┬──────┘
-    │          │               │
-    └──────────┼───────────────┘
-               │
-    ┌──────────▼──────────────┐
-    │     Service Layer       │
-    │  clustervpc / clusteriam│
-    └──────────┬──────────────┘
-               │
-    ┌──────────▼──────────────┐
-    │  CloudFormation Client  │
-    │   (Embedded Templates)  │
-    └──────────┬──────────────┘
-               │
-    ┌──────────▼──────────────┐
-    │   AWS CloudFormation    │
-    │  VPC | IAM | EC2 | R53  │
-    └─────────────────────────┘
+```mermaid
+flowchart TB
+    CLI["rosactl CLI / Lambda Handler\n(Cobra Framework)"]
+    CLI --> VPC["VPC Mgmt\nCommands"]
+    CLI --> IAM["IAM Mgmt\nCommands"]
+    CLI --> OIDC["OIDC Mgmt\nCommands"]
+    CLI --> Cluster["Cluster Mgmt\nCommands"]
+    CLI --> Login["Login"]
+    CLI --> Lambda["Lambda (opt)\nHandler"]
+
+    VPC --> SVC["Service Layer\nclustervpc / clusteriam / clusteroidc / cluster"]
+    IAM --> SVC
+    OIDC --> SVC
+    Cluster -->|"Platform API"| API["Platform API"]
+    Login --> Config["Config\n(API URL)"]
+    Lambda --> SVC
+
+    SVC --> CFN["CloudFormation Client\n(Embedded Templates)"]
+    CFN --> AWS["AWS CloudFormation\nVPC | IAM | OIDC | EC2 | R53"]
 ```
 
 **Key Architectural Decisions:**
@@ -464,6 +543,7 @@ rosactl uses a consistent naming convention for CloudFormation stacks:
 - **IAM stacks**: `rosa-{cluster-name}-iam`
 
 All stacks are tagged with:
+
 - `Cluster`: cluster name
 - `ManagedBy`: rosactl
 - `red-hat-managed`: true
@@ -473,6 +553,7 @@ All stacks are tagged with:
 ### OIDC Thumbprint Auto-Fetch
 
 When creating IAM resources with `cluster-iam create`, rosactl automatically fetches the TLS thumbprint from the OIDC issuer URL. This requires:
+
 - The OIDC issuer URL to be publicly accessible over HTTPS
 - Valid TLS certificate on the OIDC endpoint
 
@@ -481,6 +562,7 @@ When creating IAM resources with `cluster-iam create`, rosactl automatically fet
 The `cluster-iam create` command creates the following IAM resources via CloudFormation:
 
 **Control Plane Roles** (7):
+
 - Ingress Operator Role
 - Kube Controller Manager Role
 - EBS CSI Driver Operator Role
@@ -490,6 +572,7 @@ The `cluster-iam create` command creates the following IAM resources via CloudFo
 - Node Pool Management Role
 
 **Worker Node Resources**:
+
 - Worker IAM Role
 - Worker Instance Profile
 
@@ -498,6 +581,7 @@ All roles use OIDC federation for authentication with minimal required permissio
 ### VPC Resources Created
 
 The `cluster-vpc create` command creates isolated networking resources:
+
 - Dedicated VPC with configurable CIDR
 - Public and private subnets across 3 availability zones
 - NAT Gateway(s) for outbound internet access from private subnets
@@ -522,11 +606,13 @@ When using the optional Lambda bootstrap feature, rosactl automatically creates 
 ### Lambda OIDC RSA Private Keys
 
 When creating OIDC Lambdas (`--handler oidc`), the RSA private key is saved to:
+
 ```
 /tmp/oidc-private-key-{KEY_ID}.pem
 ```
 
 **Security best practices:**
+
 - File permissions are set to `0600` (owner read/write only)
 - Move the key to a secure location (e.g., AWS Secrets Manager) for production use
 - Delete from `/tmp` when no longer needed
@@ -537,6 +623,7 @@ When creating OIDC Lambdas (`--handler oidc`), the RSA private key is saved to:
 ### Common Issues
 
 **"Stack already exists" (cluster-vpc or cluster-iam create)**
+
 - The command automatically attempts to update the existing stack
 - Check the stack status in CloudFormation console
 - If stuck in a failed state, delete and recreate:
@@ -546,11 +633,13 @@ When creating OIDC Lambdas (`--handler oidc`), the RSA private key is saved to:
   ```
 
 **"Failed to fetch TLS thumbprint" (cluster-iam create)**
+
 - Ensure the OIDC issuer URL is publicly accessible over HTTPS
 - Verify the TLS certificate is valid
 - Check network connectivity to the OIDC endpoint
 
 **"Insufficient permissions" (CloudFormation errors)**
+
 - Ensure your AWS credentials have the required permissions listed in Prerequisites
 - Check CloudFormation stack events for specific permission errors:
   ```bash
@@ -558,16 +647,19 @@ When creating OIDC Lambdas (`--handler oidc`), the RSA private key is saved to:
   ```
 
 **"NAT Gateway creation timeout" (LocalStack testing)**
+
 - This is expected in LocalStack as NAT Gateway support is limited
 - Tests accept both CREATE_COMPLETE and CREATE_FAILED status for LocalStack
 - Real AWS environments should succeed
 
 **"Lambda container execution fails" (LocalStack testing)**
+
 - Lambda container execution requires LocalStack Pro
 - Set `LOCALSTACK_AUTH_TOKEN=your-token-here` before starting LocalStack
 - Or create a `.env` file in the project root with `LOCALSTACK_AUTH_TOKEN=your-token-here`
 
 **AWS Configuration**
+
 ```bash
 # Set AWS profile
 export AWS_PROFILE=your-profile-name
@@ -579,6 +671,7 @@ export AWS_REGION=us-east-1
 ```
 
 **"go-semver-release not found"**
+
 ```bash
 go install github.com/s0ders/go-semver-release@latest
 ```
@@ -616,6 +709,7 @@ Apache License 2.0
 ## Acknowledgments
 
 Built with:
+
 - [Cobra](https://github.com/spf13/cobra) - CLI framework
 - [AWS SDK for Go v2](https://github.com/aws/aws-sdk-go-v2) - AWS integration
 - [Ginkgo](https://github.com/onsi/ginkgo) - Testing framework

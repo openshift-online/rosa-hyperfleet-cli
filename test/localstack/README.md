@@ -34,6 +34,7 @@ export LOCALSTACK_AUTH_TOKEN=your-token-here
 ```
 
 This script will:
+
 1. Start LocalStack Pro via docker-compose
 2. Build the `rosactl` binary
 3. Run all Ginkgo tests against LocalStack (CLI tests and Lambda handler tests)
@@ -68,6 +69,7 @@ docker-compose -f docker-compose.localstack.yaml down -v
 ## What's Tested
 
 ### VPC Management via CLI (`cluster-vpc`)
+
 - CloudFormation template validation
 - VPC resource creation
 - Subnet creation across availability zones
@@ -75,18 +77,21 @@ docker-compose -f docker-compose.localstack.yaml down -v
 - Route53 private hosted zone creation
 
 ### IAM Management via CLI (`cluster-iam`)
+
 - CloudFormation template validation
 - IAM OIDC provider creation
 - Control plane IAM roles (7 roles)
 - Worker node IAM role and instance profile
 
 ### CloudFormation Operations
+
 - Stack creation
 - Stack listing
 - Stack status checking
 - Stack deletion
 
 ### Lambda Handler Invocations (`lambda_test.go`)
+
 - Builds the `rosactl` container image and pushes it to LocalStack ECR
 - Deploys the Lambda function via `rosactl bootstrap create`
 - Invokes Lambda with `apply-cluster-vpc` event and verifies VPC stack creation
@@ -108,6 +113,7 @@ test/localstack/
 ## LocalStack Configuration
 
 The `docker-compose.localstack.yaml` file configures LocalStack Pro with:
+
 - CloudFormation
 - IAM
 - EC2
@@ -137,16 +143,19 @@ The `docker-compose.localstack.yaml` file configures LocalStack Pro with:
 ## Debugging
 
 ### View LocalStack logs
+
 ```bash
 docker-compose -f docker-compose.localstack.yaml logs -f
 ```
 
 ### Check LocalStack health
+
 ```bash
 curl http://localhost:4566/_localstack/health
 ```
 
 ### List resources in LocalStack
+
 ```bash
 # CloudFormation stacks
 aws cloudformation list-stacks --endpoint-url http://localhost:4566
@@ -159,11 +168,13 @@ aws iam list-roles --endpoint-url http://localhost:4566
 ```
 
 ### Keep LocalStack running after tests
+
 Edit `run-localstack-tests.sh` and comment out the cleanup section, or answer 'N' when prompted to stop LocalStack.
 
 ## Troubleshooting
 
 **Problem**: LocalStack doesn't start
+
 - **Podman users**: Make sure Podman socket is running: `systemctl --user status podman.socket`
   - Start if needed: `systemctl --user start podman.socket`
 - **Docker users**: Set `export DOCKER_SOCK=/var/run/docker.sock` before starting
@@ -171,10 +182,12 @@ Edit `run-localstack-tests.sh` and comment out the cleanup section, or answer 'N
 - Check logs: `docker-compose -f docker-compose.localstack.yaml logs`
 
 **Problem**: Tests fail with connection refused
+
 - Verify LocalStack is healthy: `curl http://localhost:4566/_localstack/health`
 - Check `LOCALSTACK_ENDPOINT` environment variable is set correctly
 
 **Problem**: CloudFormation stack creation hangs
+
 - LocalStack may not support all CloudFormation resource types
 - Check LocalStack logs for unsupported features
 - Consider using LocalStack Pro for advanced features

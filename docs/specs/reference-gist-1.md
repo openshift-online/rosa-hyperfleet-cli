@@ -69,6 +69,7 @@ The two client IDs (`"openshift"` and `"sts.amazonaws.com"`) correspond to the t
 ### Step 3: IAM Roles With OIDC Trust Policies Are Created in the Customer Account
 
 For each control plane component that needs AWS access, an IAM role is created in the customer's account. Each role has:
+
 - A **permissions policy** (what AWS actions it can perform)
 - A **trust policy** (who can assume it)
 
@@ -76,34 +77,36 @@ The trust policy uses the OIDC provider as a federated principal and restricts a
 
 ```json
 {
-    "Version": "2012-10-17",
-    "Statement": [{
-        "Effect": "Allow",
-        "Principal": {
-            "Federated": "<OIDC_PROVIDER_ARN>"
-        },
-        "Action": "sts:AssumeRoleWithWebIdentity",
-        "Condition": {
-            "StringEquals": {
-                "<s3-bucket-domain>:sub": "system:serviceaccount:<namespace>:<sa-name>"
-            }
+  "Version": "2012-10-17",
+  "Statement": [
+    {
+      "Effect": "Allow",
+      "Principal": {
+        "Federated": "<OIDC_PROVIDER_ARN>"
+      },
+      "Action": "sts:AssumeRoleWithWebIdentity",
+      "Condition": {
+        "StringEquals": {
+          "<s3-bucket-domain>:sub": "system:serviceaccount:<namespace>:<sa-name>"
         }
-    }]
+      }
+    }
+  ]
 }
 ```
 
 The key roles (defined in [`api/hypershift/v1beta1/aws.go:434+`](api/hypershift/v1beta1/aws.go#L434)) include:
 
-| Role | Purpose |
-|------|---------|
-| `IngressARN` | Route53 + ELB operations |
-| `ImageRegistryARN` | S3 bucket operations for image registry |
-| `StorageARN` | EBS volume operations |
-| `KubeCloudControllerARN` | EC2/ELB operations |
-| `NodePoolManagementARN` | CAPA controller (EC2 instances for worker nodes) |
-| `ControlPlaneOperatorARN` | VPC endpoint operations |
-| `NetworkARN` | Network configuration |
-| `KarpenterRoleARN` | Karpenter auto-scaling (optional) |
+| Role                      | Purpose                                          |
+| ------------------------- | ------------------------------------------------ |
+| `IngressARN`              | Route53 + ELB operations                         |
+| `ImageRegistryARN`        | S3 bucket operations for image registry          |
+| `StorageARN`              | EBS volume operations                            |
+| `KubeCloudControllerARN`  | EC2/ELB operations                               |
+| `NodePoolManagementARN`   | CAPA controller (EC2 instances for worker nodes) |
+| `ControlPlaneOperatorARN` | VPC endpoint operations                          |
+| `NetworkARN`              | Network configuration                            |
+| `KarpenterRoleARN`        | Karpenter auto-scaling (optional)                |
 
 ---
 
@@ -118,6 +121,7 @@ The private key is stored as a Kubernetes secret referenced by `hc.Spec.ServiceA
 See [`hostedcluster_controller.go:4480-4501`](hypershift-operator/controllers/hostedcluster/hostedcluster_controller.go#L4480-L4501) and [`manifests.go:17-18`](hypershift-operator/controllers/manifests/controlplaneoperator/manifests.go#L17-L18).
 
 The hosted kube-apiserver is then started with:
+
 - `--service-account-signing-key-file` pointing at the private key ([`kas/config.go:259`](control-plane-operator/controllers/hostedcontrolplane/v2/kas/config.go#L259))
 - `--service-account-issuer` set to the S3 OIDC URL ([`kas/config.go:253`](control-plane-operator/controllers/hostedcontrolplane/v2/kas/config.go#L253))
 
@@ -156,6 +160,7 @@ token, err := clientset.CoreV1().ServiceAccounts(sa.GetNamespace()).CreateToken(
 ```
 
 The resulting JWT has:
+
 - `iss` = the S3-hosted OIDC issuer URL
 - `sub` = `system:serviceaccount:<namespace>:<name>`
 - `aud` = `["openshift"]`
@@ -176,6 +181,7 @@ region = us-east-1
 ```
 
 When the AWS SDK in the pod needs credentials, it:
+
 1. Reads the JWT from `web_identity_token_file`
 2. Calls `STS:AssumeRoleWithWebIdentity` with the JWT and the `role_arn`
 3. AWS STS fetches the OIDC discovery document from S3
@@ -364,18 +370,18 @@ flowchart LR
 
 ## Key Source Files
 
-| Component | File | Lines |
-|-----------|------|-------|
-| OIDC document generation | [`support/oidc/oidc.go`](support/oidc/oidc.go) | 29-83 |
-| OIDC provider creation | [`cmd/infra/aws/iam.go`](cmd/infra/aws/iam.go) | 988-1030 |
-| Trust policy template | [`cmd/infra/aws/iam.go`](cmd/infra/aws/iam.go) | 1434-1451 |
-| Private key reconciliation | [`hostedcluster_controller.go`](hypershift-operator/controllers/hostedcluster/hostedcluster_controller.go) | 4480-4501 |
-| SA signing key secret | [`manifests.go`](hypershift-operator/controllers/manifests/controlplaneoperator/manifests.go) | 17-18 |
-| KAS signing key flag | [`kas/config.go`](control-plane-operator/controllers/hostedcontrolplane/v2/kas/config.go) | 253-259 |
-| Token minter | [`token-minter/tokenminter.go`](token-minter/tokenminter.go) | 38-228 |
-| CAPA deployment (token minter + creds) | [`aws.go`](hypershift-operator/controllers/hostedcluster/internal/platform/aws/aws.go) | 34-39, 140-259 |
-| STS AssumeRole helper | [`support/awsutil/sts.go`](support/awsutil/sts.go) | — |
-| API role definitions | [`api/hypershift/v1beta1/aws.go`](api/hypershift/v1beta1/aws.go) | 434+ |
+| Component                              | File                                                                                                       | Lines          |
+| -------------------------------------- | ---------------------------------------------------------------------------------------------------------- | -------------- |
+| OIDC document generation               | [`support/oidc/oidc.go`](support/oidc/oidc.go)                                                             | 29-83          |
+| OIDC provider creation                 | [`cmd/infra/aws/iam.go`](cmd/infra/aws/iam.go)                                                             | 988-1030       |
+| Trust policy template                  | [`cmd/infra/aws/iam.go`](cmd/infra/aws/iam.go)                                                             | 1434-1451      |
+| Private key reconciliation             | [`hostedcluster_controller.go`](hypershift-operator/controllers/hostedcluster/hostedcluster_controller.go) | 4480-4501      |
+| SA signing key secret                  | [`manifests.go`](hypershift-operator/controllers/manifests/controlplaneoperator/manifests.go)              | 17-18          |
+| KAS signing key flag                   | [`kas/config.go`](control-plane-operator/controllers/hostedcontrolplane/v2/kas/config.go)                  | 253-259        |
+| Token minter                           | [`token-minter/tokenminter.go`](token-minter/tokenminter.go)                                               | 38-228         |
+| CAPA deployment (token minter + creds) | [`aws.go`](hypershift-operator/controllers/hostedcluster/internal/platform/aws/aws.go)                     | 34-39, 140-259 |
+| STS AssumeRole helper                  | [`support/awsutil/sts.go`](support/awsutil/sts.go)                                                         | —              |
+| API role definitions                   | [`api/hypershift/v1beta1/aws.go`](api/hypershift/v1beta1/aws.go)                                           | 434+           |
 
 ## External Documentation
 

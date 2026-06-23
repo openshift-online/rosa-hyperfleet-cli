@@ -4,12 +4,12 @@ Welcome to the rosactl documentation! This directory contains all project docume
 
 ## 📚 Quick Links
 
-| What do you want to do? | Start here |
-|--------------------------|------------|
+| What do you want to do?         | Start here                                                   |
+| ------------------------------- | ------------------------------------------------------------ |
 | **Understand the architecture** | [architecture/ARCHITECTURE.md](architecture/ARCHITECTURE.md) |
-| **Build and contribute** | [guides/DEVELOPMENT.md](guides/DEVELOPMENT.md) |
-| **Manage versions** | [guides/VERSIONING.md](guides/VERSIONING.md) |
-| **Run integration tests** | [../test/localstack/README.md](../test/localstack/README.md) |
+| **Build and contribute**        | [guides/DEVELOPMENT.md](guides/DEVELOPMENT.md)               |
+| **Manage versions**             | [guides/VERSIONING.md](guides/VERSIONING.md)                 |
+| **Run integration tests**       | [../test/localstack/README.md](../test/localstack/README.md) |
 
 ## 📁 Documentation Structure
 
@@ -30,7 +30,9 @@ docs/
 ## 🏗️ Architecture Documentation
 
 ### [ARCHITECTURE.md](architecture/ARCHITECTURE.md)
+
 Complete system architecture including:
+
 - Direct CloudFormation management with optional Lambda
 - Managed OIDC architecture (Red Hat-hosted)
 - Dual-mode Go binary (CLI and Lambda)
@@ -41,21 +43,27 @@ Complete system architecture including:
 ## 📖 User & Developer Guides
 
 ### [DEVELOPMENT.md](guides/DEVELOPMENT.md)
+
 Developer setup and contribution guide:
+
 - Local development environment setup
 - Build and test instructions
 - Code organization and patterns
 - Pull request workflow
 
 ### [VERSIONING.md](guides/VERSIONING.md)
+
 Semantic versioning with conventional commits:
+
 - How to use `make release` for version management
 - Conventional commit message format
 - Version bump rules (feat, fix, BREAKING CHANGE)
 - Release workflow
 
 ### [DOCUMENTATION.md](guides/DOCUMENTATION.md)
+
 Documentation writing guidelines:
+
 - Documentation standards and style
 - How to write effective docs
 - Examples and anti-patterns
@@ -64,16 +72,16 @@ Documentation writing guidelines:
 
 ### Feature Specifications
 
-| Document | Purpose |
-|----------|---------|
+| Document                                           | Purpose                                    |
+| -------------------------------------------------- | ------------------------------------------ |
 | [LocalStack Testing](../test/localstack/README.md) | LocalStack integration testing with Ginkgo |
 
 ### References
 
-| Document | Purpose |
-|----------|---------|
-| [reference-gist-1.md](specs/reference-gist-1.md) | Deep dive into OIDC/STS cross-account authentication in ROSA HCP |
-| [references.md](specs/references.md) | External project references (hypershift, rosa, rosa-regional-platform-api) |
+| Document                                         | Purpose                                                                    |
+| ------------------------------------------------ | -------------------------------------------------------------------------- |
+| [reference-gist-1.md](specs/reference-gist-1.md) | Deep dive into OIDC/STS cross-account authentication in ROSA HCP           |
+| [references.md](specs/references.md)             | External project references (hypershift, rosa, rosa-regional-platform-api) |
 
 ## 🚀 Getting Started
 
@@ -156,7 +164,7 @@ See [DOCUMENTATION.md](guides/DOCUMENTATION.md) for detailed guidelines.
 ### Markdown Style
 
 - Use ATX-style headers (`#` not underlines)
-- Fenced code blocks with language hints (```bash not ```)
+- Fenced code blocks with language hints (`bash not `)
 - Tables for comparisons and structured data
 - Emoji for visual categorization (📚 📁 🚀 etc.)
 

@@ -3,6 +3,7 @@
 ## Getting Started
 
 ### Prerequisites
+
 - **Go 1.25+** - Required for building from source
 - **Make** - For using Makefile targets
 - **Docker or Podman** - Optional, for LocalStack testing and building Lambda container images
@@ -12,6 +13,7 @@
 - **go-semver-release** - Optional, for semantic versioning
 
 Install go-semver-release:
+
 ```bash
 go install github.com/s0ders/go-semver-release@latest
 ```
@@ -19,17 +21,20 @@ go install github.com/s0ders/go-semver-release@latest
 ### Setup
 
 1. Clone the repository
+
 ```bash
 git clone https://github.com/openshift-online/rosa-regional-platform-cli.git
 cd rosa-regional-platform-cli
 ```
 
 2. Install Go dependencies
+
 ```bash
 go mod download
 ```
 
 3. Build the project
+
 ```bash
 make build
 ```
@@ -37,6 +42,7 @@ make build
 The binary will be available at `./rosactl`.
 
 4. Run tests
+
 ```bash
 make test-localstack
 ```
@@ -44,6 +50,7 @@ make test-localstack
 ## Development Workflow
 
 ### Branch Strategy
+
 - `main` - Production-ready code, protected branch
 - `feature/*` - New features and enhancements
 - `fix/*` - Bug fixes
@@ -53,6 +60,7 @@ make test-localstack
 ### Making Changes
 
 1. Create a feature branch from main
+
 ```bash
 git checkout main
 git pull origin main
@@ -61,11 +69,13 @@ git checkout -b feature/add-stack-outputs
 
 2. Make your changes
 3. Test locally with LocalStack
+
 ```bash
 make test-localstack
 ```
 
 4. Build and test the binary
+
 ```bash
 make build
 ./rosactl cluster-vpc create test --region us-east-1 --help
@@ -87,6 +97,7 @@ footer
 ```
 
 **Types** (affects version bump):
+
 - `feat`: New feature (minor version bump)
 - `fix`: Bug fix (patch version bump)
 - `docs`: Documentation only (patch version bump)
@@ -96,6 +107,7 @@ footer
 - `BREAKING CHANGE`: Breaking API change (major version bump)
 
 **Examples**:
+
 ```bash
 # Feature (bumps 0.1.0 → 0.2.0)
 git commit -m "feat: add VPC peering support"
@@ -117,12 +129,15 @@ See [docs/guides/VERSIONING.md](VERSIONING.md) for details.
 ## Code Style
 
 ### Formatting
+
 Use `gofmt` for code formatting (enforced by Go toolchain):
+
 ```bash
 gofmt -w .
 ```
 
 ### Linting
+
 ```bash
 # Run golangci-lint (if configured)
 golangci-lint run
@@ -132,6 +147,7 @@ go vet ./...
 ```
 
 ### Best Practices
+
 - Use `aws.String()`, `aws.Int32()` for pointer conversions
 - Wrap errors with context: `fmt.Errorf("operation failed: %w", err)`
 - Use typed errors for CloudFormation states (StackAlreadyExistsError, NoChangesError)
@@ -158,26 +174,31 @@ LocalStack tests validate CLI commands and Lambda handler invocations against a 
 Lambda container execution tests require LocalStack Pro.
 
 1. Set the LocalStack Pro auth token (required for Lambda tests):
+
 ```bash
 export LOCALSTACK_AUTH_TOKEN=your-token-here
 ```
 
 2. Start LocalStack:
+
 ```bash
 make localstack-up
 ```
 
 3. Run tests:
+
 ```bash
 make test-localstack
 ```
 
 4. Stop LocalStack:
+
 ```bash
 make localstack-down
 ```
 
 **What the tests validate**:
+
 - `cluster-vpc create` creates CloudFormation stack with VPC resources
 - `cluster-vpc delete` deletes VPC stack
 - `cluster-iam create` creates CloudFormation stack with IAM resources
@@ -203,6 +224,7 @@ var _ = Describe("Feature", func() {
 ```
 
 For CLI command tests:
+
 - Use `exec.CommandContext()` to invoke rosactl binary
 - Use `gexec.Start()` to capture output
 - Verify both stdout and stderr
@@ -213,6 +235,7 @@ For CLI command tests:
 ### Verbose AWS SDK Logging
 
 Set environment variables:
+
 ```bash
 export AWS_SDK_LOG_LEVEL=debug
 export AWS_SDK_LOG_MODE=LogWithHTTPBody
@@ -222,6 +245,7 @@ export AWS_SDK_LOG_MODE=LogWithHTTPBody
 ### CloudFormation Stack Events
 
 View stack events for troubleshooting:
+
 ```bash
 aws cloudformation describe-stack-events \
   --stack-name rosa-my-cluster-vpc \
@@ -238,6 +262,7 @@ aws cloudformation describe-stack-events \
 ## Building
 
 ### Local Build
+
 ```bash
 # Build for current platform
 make build
@@ -246,6 +271,7 @@ make build
 ```
 
 ### Build for Specific Platform
+
 ```bash
 # Linux
 GOOS=linux GOARCH=amd64 go build -o rosactl cmd/rosactl/main.go
@@ -258,6 +284,7 @@ GOOS=windows GOARCH=amd64 go build -o rosactl.exe cmd/rosactl/main.go
 ```
 
 ### Release Build
+
 ```bash
 # Check what version would be released
 make release-dry-run
@@ -270,6 +297,7 @@ git push origin v0.2.0
 ```
 
 ### Docker Build (for Lambda deployment)
+
 ```bash
 # Build container image
 docker build -f Dockerfile -t rosactl:latest .
@@ -291,13 +319,19 @@ rosa-regional-platform-cli/
 ├── internal/
 │   ├── commands/                    # CLI command groups
 │   │   ├── bootstrap/               # Lambda bootstrap deployment
-│   │   ├── clustervpc/              # VPC management
+│   │   ├── cluster/                 # Cluster lifecycle (create, list, kubeconfig, get-token)
 │   │   ├── clusteriam/              # IAM management
+│   │   ├── clusteroidc/             # OIDC provider management
+│   │   ├── clustervpc/              # VPC management
 │   │   ├── handler/                 # Lambda handler entrypoint command
+│   │   ├── login/                   # Platform API login
 │   │   └── version/                 # Version command
+│   ├── config/                      # CLI configuration (API URL persistence)
 │   ├── services/                    # Shared business logic (used by CLI and Lambda)
-│   │   ├── clustervpc/              # VPC service (CreateVPC, DeleteVPC)
-│   │   └── clusteriam/              # IAM service (CreateIAM, DeleteIAM)
+│   │   ├── cluster/                 # Cluster service (create, list via Platform API)
+│   │   ├── clusteriam/              # IAM service (CreateIAM, DeleteIAM)
+│   │   ├── clusteroidc/             # OIDC service (create, delete, list)
+│   │   └── clustervpc/              # VPC service (CreateVPC, DeleteVPC)
 │   ├── aws/
 │   │   └── cloudformation/          # CloudFormation client
 │   ├── cloudformation/
@@ -329,6 +363,7 @@ rosa-regional-platform-cli/
 4. Add tests in LocalStack test suite
 
 Example:
+
 ```go
 // internal/commands/myfeature/myfeature.go
 package myfeature
@@ -397,6 +432,7 @@ When making changes that affect user-facing behavior or architecture:
 ### Code Review Guidelines
 
 **For Reviewers**:
+
 - Check for security issues (command injection, path traversal)
 - Verify CloudFormation templates are valid
 - Ensure error messages are helpful
@@ -404,6 +440,7 @@ When making changes that affect user-facing behavior or architecture:
 - Check that documentation is updated
 
 **For Contributors**:
+
 - Keep changes focused and atomic
 - Write clear commit messages
 - Add tests for new features

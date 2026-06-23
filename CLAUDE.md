@@ -6,15 +6,16 @@ CLI tool (`rosactl`) for managing AWS infrastructure (VPC, IAM, OIDC) for ROSA h
 
 ## Key Directories
 
-| Path | Purpose |
-|------|---------|
-| `cmd/rosactl/` | Binary entry point |
-| `internal/commands/` | Cobra CLI subcommands (clustervpc, clusteriam, bootstrap, handler, version) |
-| `internal/services/` | Business logic shared by CLI commands and Lambda handler |
-| `internal/aws/cloudformation/` | CloudFormation client and stack operations |
-| `internal/cloudformation/templates/` | Embedded CloudFormation templates (go:embed) |
-| `test/localstack/` | Integration tests against LocalStack |
-| `docs/` | Architecture, guides, and specs |
+| Path                                 | Purpose                                                                                                  |
+| ------------------------------------ | -------------------------------------------------------------------------------------------------------- |
+| `cmd/rosactl/`                       | Binary entry point                                                                                       |
+| `internal/commands/`                 | Cobra CLI subcommands (cluster, clusteriam, clusteroidc, clustervpc, bootstrap, handler, login, version) |
+| `internal/services/`                 | Business logic shared by CLI commands and Lambda handler (cluster, clusteriam, clusteroidc, clustervpc)  |
+| `internal/config/`                   | CLI configuration (API URL persistence for `login`)                                                      |
+| `internal/aws/cloudformation/`       | CloudFormation client and stack operations                                                               |
+| `internal/cloudformation/templates/` | Embedded CloudFormation templates (go:embed)                                                             |
+| `test/localstack/`                   | Integration tests against LocalStack                                                                     |
+| `docs/`                              | Architecture, guides, and specs                                                                          |
 
 ## Commands
 
