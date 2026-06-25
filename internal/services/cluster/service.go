@@ -96,12 +96,17 @@ func GenerateClusterConfig(ctx context.Context, req *GenerateClusterConfigReques
 	for key, value := range vpcStack.Outputs {
 		camelKey := toCamelCase(key)
 
-		// Special handling for PrivateSubnetIds - only take the first subnet
+		// PrivateSubnetIds comes as comma-separated string from VPC stack outputs;
+		// the CRD expects []string.
 		if key == "PrivateSubnetIds" {
-			subnets := strings.Split(value, ",")
-			if len(subnets) > 0 {
-				spec[camelKey] = strings.TrimSpace(subnets[0])
+			parts := strings.Split(value, ",")
+			trimmed := make([]string, 0, len(parts))
+			for _, s := range parts {
+				if t := strings.TrimSpace(s); t != "" {
+					trimmed = append(trimmed, t)
+				}
 			}
+			spec[camelKey] = trimmed
 			continue
 		}
 
