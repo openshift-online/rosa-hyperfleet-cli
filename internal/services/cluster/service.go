@@ -75,7 +75,10 @@ func GenerateClusterConfig(ctx context.Context, req *GenerateClusterConfigReques
 		return nil, fmt.Errorf("failed to describe VPC stack: %w", err)
 	}
 
-	// Build the spec object with base fields
+	// Build the spec object. Fields without a matching ClusterSpec JSON tag
+	// (provider, multi_az, compute_machine_type, compute_replicas, placement)
+	// are silently dropped by the API's JSON unmarshal but kept here for
+	// dry-run output and future schema evolution.
 	spec := map[string]interface{}{
 		"provider":             req.Provider,
 		"region":               req.Region,
@@ -86,18 +89,32 @@ func GenerateClusterConfig(ctx context.Context, req *GenerateClusterConfigReques
 		"placement":            req.PlacementCluster,
 	}
 
-	// Merge IAM outputs directly into spec with camelCase keys
-	for key, value := range iamOutputs {
-		camelKey := toCamelCase(key)
-		spec[camelKey] = value
+	// Map IAM role ARNs into the nested platform.aws.roles structure
+	// expected by the hyperfleet ClusterSpec CRD.
+	spec["platform"] = map[string]interface{}{
+		"aws": map[string]interface{}{
+			"roles": map[string]interface{}{
+				"ingressARN":              iamOutputs["IngressRoleArn"],
+				"imageRegistryARN":        iamOutputs["ImageRegistryRoleArn"],
+				"storageARN":              iamOutputs["EBSCSIRoleArn"],
+				"networkARN":              iamOutputs["NetworkConfigRoleArn"],
+				"kubeCloudControllerARN":  iamOutputs["CloudControllerManagerRoleArn"],
+				"nodePoolManagementARN":   iamOutputs["NodePoolManagementRoleArn"],
+				"controlPlaneOperatorARN": iamOutputs["ControlPlaneOperatorRoleArn"],
+			},
+		},
 	}
+	// WorkerInstanceProfileName and WorkerRoleArn are top-level spec fields.
+	spec["workerInstanceProfileName"] = iamOutputs["WorkerInstanceProfileName"]
 
-	// Merge VPC outputs directly into spec with camelCase keys
+	// Merge VPC outputs into spec with camelCase keys. Fields without a
+	// matching ClusterSpec JSON tag (vpcCidr, publicSubnetIds, etc.) are
+	// silently dropped by the API but kept for dry-run output.
 	for key, value := range vpcStack.Outputs {
 		camelKey := toCamelCase(key)
 
-		// PrivateSubnetIds comes as comma-separated string from VPC stack outputs;
-		// the CRD expects []string.
+		// PrivateSubnetIds comes as comma-separated string from VPC stack
+		// outputs; the CRD expects []string.
 		if key == "PrivateSubnetIds" {
 			parts := strings.Split(value, ",")
 			trimmed := make([]string, 0, len(parts))
