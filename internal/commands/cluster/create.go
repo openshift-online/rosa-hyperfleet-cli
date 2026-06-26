@@ -123,10 +123,10 @@ func printClusterSummary(response map[string]interface{}) {
 	id := getStringField(response, "id")
 	version := getStringField(response, "version")
 
-	// Get cloudUrl from spec
+	// Get OIDC issuer URL from spec
 	cloudURL := ""
 	if spec, ok := response["spec"].(map[string]interface{}); ok {
-		cloudURL = getStringField(spec, "cloudUrl")
+		cloudURL = getStringField(spec, "oidcIssuerURL")
 	}
 
 	// Print summary

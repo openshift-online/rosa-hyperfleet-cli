@@ -23,7 +23,7 @@ type listOptions struct {
 type clusterSpec struct {
 	Placement string `json:"placement"`
 	Version   string `json:"version"`
-	CloudURL  string `json:"cloudUrl"`
+	CloudURL  string `json:"oidcIssuerURL"`
 }
 
 type condition struct {
