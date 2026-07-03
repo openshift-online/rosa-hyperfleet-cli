@@ -1,6 +1,6 @@
 # rosactl
 
-A command-line tool for ROSA Regional Platform
+A command-line tool for ROSA HyperFleet
 
 Manages AWS infrastructure for ROSA hosted clusters including VPC networking, IAM roles, and OIDC providers via CloudFormation stacks.
 
@@ -9,6 +9,7 @@ Manages AWS infrastructure for ROSA hosted clusters including VPC networking, IA
 ## Features
 
 ### Cluster Infrastructure Management
+
 - **VPC Networking**: Create and manage VPCs, subnets, NAT gateways, and security groups for hosted clusters
 - **IAM Resources**: Create OIDC providers and IAM roles for cluster control plane and worker nodes
 - **CloudFormation-based**: All resources deployed via CloudFormation stacks for consistency and rollback support
@@ -16,11 +17,13 @@ Manages AWS infrastructure for ROSA hosted clusters including VPC networking, IA
 - **Direct execution**: No Lambda bootstrap required for basic operations
 
 ### Optional Lambda Bootstrap
+
 - **Container-based Lambda**: Deploy rosactl as a Lambda function for event-driven workflows
 - **Automated deployments**: Integrate with CI/CD pipelines and AWS event sources
 - **Same binary**: Lambda uses the same rosactl binary packaged in a container
 
 ### Developer Experience
+
 - **Semantic versioning**: Automated version management with conventional commits
 - **LocalStack testing**: Integration tests against LocalStack for CloudFormation validation
 - **Clear error messages**: User-friendly error reporting with CloudFormation event details
@@ -32,8 +35,8 @@ Manages AWS infrastructure for ROSA hosted clusters including VPC networking, IA
 
 ```bash
 # Clone the repository
-git clone https://github.com/openshift-online/rosa-regional-platform-cli.git
-cd rosa-regional-platform-cli
+git clone https://github.com/openshift-online/rosa-hyperfleet-cli.git
+cd rosa-hyperfleet-cli
 
 # Build
 make build
@@ -129,6 +132,7 @@ rosactl cluster-vpc create my-cluster \
 ```
 
 **What this creates:**
+
 - VPC with configurable CIDR block (default: 10.0.0.0/16)
 - 3 public subnets across availability zones
 - 3 private subnets across availability zones
@@ -166,6 +170,7 @@ rosactl cluster-iam create my-cluster \
 ```
 
 **What this creates:**
+
 1. IAM OIDC Provider (with auto-fetched TLS thumbprint)
 2. 7 control plane IAM roles:
    - Ingress Operator Role
@@ -227,6 +232,7 @@ Once deployed, the Lambda function accepts JSON event payloads:
 ```
 
 Supported `action` values:
+
 - `apply-cluster-vpc` - Create or update VPC CloudFormation stack
 - `delete-cluster-vpc` - Delete VPC stack
 - `apply-cluster-iam` - Create or update IAM CloudFormation stack
@@ -381,7 +387,7 @@ git push origin v0.2.0
 ## Project Structure
 
 ```
-rosa-regional-platform-cli/
+rosa-hyperfleet-cli/
 ├── cmd/rosactl/                     # Entry point
 ├── internal/
 │   ├── commands/                    # CLI commands
@@ -464,6 +470,7 @@ rosactl uses a consistent naming convention for CloudFormation stacks:
 - **IAM stacks**: `rosa-{cluster-name}-iam`
 
 All stacks are tagged with:
+
 - `Cluster`: cluster name
 - `ManagedBy`: rosactl
 - `red-hat-managed`: true
@@ -473,6 +480,7 @@ All stacks are tagged with:
 ### OIDC Thumbprint Auto-Fetch
 
 When creating IAM resources with `cluster-iam create`, rosactl automatically fetches the TLS thumbprint from the OIDC issuer URL. This requires:
+
 - The OIDC issuer URL to be publicly accessible over HTTPS
 - Valid TLS certificate on the OIDC endpoint
 
@@ -481,6 +489,7 @@ When creating IAM resources with `cluster-iam create`, rosactl automatically fet
 The `cluster-iam create` command creates the following IAM resources via CloudFormation:
 
 **Control Plane Roles** (7):
+
 - Ingress Operator Role
 - Kube Controller Manager Role
 - EBS CSI Driver Operator Role
@@ -490,6 +499,7 @@ The `cluster-iam create` command creates the following IAM resources via CloudFo
 - Node Pool Management Role
 
 **Worker Node Resources**:
+
 - Worker IAM Role
 - Worker Instance Profile
 
@@ -498,6 +508,7 @@ All roles use OIDC federation for authentication with minimal required permissio
 ### VPC Resources Created
 
 The `cluster-vpc create` command creates isolated networking resources:
+
 - Dedicated VPC with configurable CIDR
 - Public and private subnets across 3 availability zones
 - NAT Gateway(s) for outbound internet access from private subnets
@@ -522,11 +533,13 @@ When using the optional Lambda bootstrap feature, rosactl automatically creates 
 ### Lambda OIDC RSA Private Keys
 
 When creating OIDC Lambdas (`--handler oidc`), the RSA private key is saved to:
+
 ```
 /tmp/oidc-private-key-{KEY_ID}.pem
 ```
 
 **Security best practices:**
+
 - File permissions are set to `0600` (owner read/write only)
 - Move the key to a secure location (e.g., AWS Secrets Manager) for production use
 - Delete from `/tmp` when no longer needed
@@ -537,6 +550,7 @@ When creating OIDC Lambdas (`--handler oidc`), the RSA private key is saved to:
 ### Common Issues
 
 **"Stack already exists" (cluster-vpc or cluster-iam create)**
+
 - The command automatically attempts to update the existing stack
 - Check the stack status in CloudFormation console
 - If stuck in a failed state, delete and recreate:
@@ -546,11 +560,13 @@ When creating OIDC Lambdas (`--handler oidc`), the RSA private key is saved to:
   ```
 
 **"Failed to fetch TLS thumbprint" (cluster-iam create)**
+
 - Ensure the OIDC issuer URL is publicly accessible over HTTPS
 - Verify the TLS certificate is valid
 - Check network connectivity to the OIDC endpoint
 
 **"Insufficient permissions" (CloudFormation errors)**
+
 - Ensure your AWS credentials have the required permissions listed in Prerequisites
 - Check CloudFormation stack events for specific permission errors:
   ```bash
@@ -558,16 +574,19 @@ When creating OIDC Lambdas (`--handler oidc`), the RSA private key is saved to:
   ```
 
 **"NAT Gateway creation timeout" (LocalStack testing)**
+
 - This is expected in LocalStack as NAT Gateway support is limited
 - Tests accept both CREATE_COMPLETE and CREATE_FAILED status for LocalStack
 - Real AWS environments should succeed
 
 **"Lambda container execution fails" (LocalStack testing)**
+
 - Lambda container execution requires LocalStack Pro
 - Set `LOCALSTACK_AUTH_TOKEN=your-token-here` before starting LocalStack
 - Or create a `.env` file in the project root with `LOCALSTACK_AUTH_TOKEN=your-token-here`
 
 **AWS Configuration**
+
 ```bash
 # Set AWS profile
 export AWS_PROFILE=your-profile-name
@@ -579,6 +598,7 @@ export AWS_REGION=us-east-1
 ```
 
 **"go-semver-release not found"**
+
 ```bash
 go install github.com/s0ders/go-semver-release@latest
 ```
@@ -616,6 +636,7 @@ Apache License 2.0
 ## Acknowledgments
 
 Built with:
+
 - [Cobra](https://github.com/spf13/cobra) - CLI framework
 - [AWS SDK for Go v2](https://github.com/aws/aws-sdk-go-v2) - AWS integration
 - [Ginkgo](https://github.com/onsi/ginkgo) - Testing framework
