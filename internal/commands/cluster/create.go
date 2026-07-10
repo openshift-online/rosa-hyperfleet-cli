@@ -123,26 +123,26 @@ func printClusterSummary(response map[string]interface{}) {
 	id := getStringField(response, "id")
 	version := getStringField(response, "version")
 
-	// Get cloudUrl from spec
-	cloudURL := ""
+	// Get OIDC issuer URL from spec
+	oidcIssuerURL := ""
 	if spec, ok := response["spec"].(map[string]interface{}); ok {
-		cloudURL = getStringField(spec, "cloudUrl")
+		oidcIssuerURL = getStringField(spec, "oidcIssuerURL")
 	}
 
 	// Print summary
 	fmt.Println("\n✓ Cluster created successfully")
 	fmt.Printf("\nCluster Details:\n")
 	if name != "" {
-		fmt.Printf("  Name:      %s\n", name)
+		fmt.Printf("  Name:           %s\n", name)
 	}
 	if id != "" {
-		fmt.Printf("  ID:        %s\n", id)
+		fmt.Printf("  ID:             %s\n", id)
 	}
 	if version != "" {
-		fmt.Printf("  Version:   %s\n", version)
+		fmt.Printf("  Version:        %s\n", version)
 	}
-	if cloudURL != "" {
-		fmt.Printf("  Cloud URL: %s\n", cloudURL)
+	if oidcIssuerURL != "" {
+		fmt.Printf("  OIDC Issuer URL: %s\n", oidcIssuerURL)
 	}
 }
 

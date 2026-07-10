@@ -75,37 +75,52 @@ func GenerateClusterConfig(ctx context.Context, req *GenerateClusterConfigReques
 		return nil, fmt.Errorf("failed to describe VPC stack: %w", err)
 	}
 
-	// Build the spec object with base fields
+	vpcID := vpcStack.Outputs["VpcId"]
+	if vpcID == "" {
+		return nil, fmt.Errorf("VPC stack %s missing required output VpcId", vpcStackName)
+	}
+
+	privateSubnetIDs := vpcStack.Outputs["PrivateSubnetIds"]
+	if privateSubnetIDs == "" {
+		return nil, fmt.Errorf("VPC stack %s missing required output PrivateSubnetIds", vpcStackName)
+	}
+	privateSubnets := strings.Split(privateSubnetIDs, ",")
+	firstSubnet := strings.TrimSpace(privateSubnets[0])
+	if firstSubnet == "" {
+		return nil, fmt.Errorf("VPC stack %s has empty PrivateSubnetIds", vpcStackName)
+	}
+
+	workerInstanceProfile := iamOutputs["WorkerInstanceProfileName"]
+	if workerInstanceProfile == "" {
+		return nil, fmt.Errorf("IAM outputs missing required value WorkerInstanceProfileName")
+	}
+
 	spec := map[string]interface{}{
-		"provider":             req.Provider,
-		"region":               req.Region,
-		"version":              req.Version,
-		"multi_az":             req.MultiAZ,
-		"compute_machine_type": req.ComputeMachineType,
-		"compute_replicas":     req.ComputeReplicas,
-		"placement":            req.PlacementCluster,
-	}
-
-	// Merge IAM outputs directly into spec with camelCase keys
-	for key, value := range iamOutputs {
-		camelKey := toCamelCase(key)
-		spec[camelKey] = value
-	}
-
-	// Merge VPC outputs directly into spec with camelCase keys
-	for key, value := range vpcStack.Outputs {
-		camelKey := toCamelCase(key)
-
-		// Special handling for PrivateSubnetIds - only take the first subnet
-		if key == "PrivateSubnetIds" {
-			subnets := strings.Split(value, ",")
-			if len(subnets) > 0 {
-				spec[camelKey] = strings.TrimSpace(subnets[0])
-			}
-			continue
-		}
-
-		spec[camelKey] = value
+		"hostedCluster": map[string]interface{}{
+			"release": map[string]interface{}{
+				"image": req.Version,
+			},
+			"platform": map[string]interface{}{
+				"type": "AWS",
+				"aws": map[string]interface{}{
+					"region": req.Region,
+					"rolesRef": map[string]interface{}{
+						"ingressARN":              iamOutputs["IngressRoleArn"],
+						"imageRegistryARN":        iamOutputs["ImageRegistryRoleArn"],
+						"storageARN":              iamOutputs["EBSCSIRoleArn"],
+						"networkARN":              iamOutputs["NetworkConfigRoleArn"],
+						"kubeCloudControllerARN":  iamOutputs["CloudControllerManagerRoleArn"],
+						"nodePoolManagementARN":   iamOutputs["NodePoolManagementRoleArn"],
+						"controlPlaneOperatorARN": iamOutputs["ControlPlaneOperatorRoleArn"],
+					},
+					"cloudProviderConfig": map[string]interface{}{
+						"vpc":    vpcID,
+						"zone":   req.Region + "a",
+						"subnet": map[string]interface{}{"id": firstSubnet},
+					},
+				},
+			},
+		},
 	}
 
 	// Build labels
