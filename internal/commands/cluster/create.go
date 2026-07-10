@@ -7,7 +7,7 @@ import (
 	"os"
 
 	awsconfig "github.com/aws/aws-sdk-go-v2/config"
-	pkgconfig "github.com/openshift-online/rosa-regional-platform-cli/internal/config"
+	"github.com/openshift-online/rosa-regional-platform-cli/internal/client"
 	clusterservice "github.com/openshift-online/rosa-regional-platform-cli/internal/services/cluster"
 	"github.com/spf13/cobra"
 )
@@ -205,7 +205,7 @@ func runCreateDryRun(ctx context.Context, opts *createOptions) error {
 }
 
 func runCreateAndSubmit(ctx context.Context, opts *createOptions) error {
-	// Load AWS config
+	// Load AWS config (needed for CloudFormation calls in GenerateClusterConfig)
 	cfg, err := awsconfig.LoadDefaultConfig(ctx, awsconfig.WithRegion(opts.region))
 	if err != nil {
 		return fmt.Errorf("failed to load AWS config: %w", err)
@@ -247,17 +247,14 @@ func runCreateAndSubmit(ctx context.Context, opts *createOptions) error {
 		fmt.Fprintf(os.Stderr, "✓ Cluster configuration saved to: %s\n", opts.outputFile)
 	}
 
-	// Get the platform API URL from config
-	baseURL, err := pkgconfig.GetPlatformAPIURL()
+	c, err := client.New(ctx)
 	if err != nil {
 		return err
 	}
 
-	// Submit cluster to platform API
 	submitReq := &clusterservice.SubmitClusterRequest{
-		Payload:        genResp.ClusterConfig,
-		PlatformAPIURL: baseURL,
-		AWSConfig:      cfg,
+		Payload: genResp.ClusterConfig,
+		Client:  c,
 	}
 
 	if opts.output != "json" {
@@ -269,7 +266,6 @@ func runCreateAndSubmit(ctx context.Context, opts *createOptions) error {
 		return err
 	}
 
-	// Output response based on format
 	if opts.output == "json" {
 		jsonBytes, err := json.MarshalIndent(submitResp.Response, "", "  ")
 		if err != nil {
@@ -277,7 +273,6 @@ func runCreateAndSubmit(ctx context.Context, opts *createOptions) error {
 		}
 		fmt.Println(string(jsonBytes))
 	} else {
-		// Extract and display key fields from response
 		printClusterSummary(submitResp.Response)
 	}
 
@@ -285,37 +280,26 @@ func runCreateAndSubmit(ctx context.Context, opts *createOptions) error {
 }
 
 func runCreateWithPayload(ctx context.Context, opts *createOptions) error {
-	// Read the payload file
 	payloadBytes, err := os.ReadFile(opts.payloadFile)
 	if err != nil {
 		return fmt.Errorf("failed to read payload file: %w", err)
 	}
 
-	// Validate JSON
 	var payload map[string]interface{}
 	if err := json.Unmarshal(payloadBytes, &payload); err != nil {
 		return fmt.Errorf("invalid JSON in payload file: %w", err)
 	}
 
-	// Override cluster name with CLI argument (CLI arg takes precedence)
 	if currentName, ok := payload["name"].(string); ok && currentName != opts.clusterName {
 		fmt.Fprintf(os.Stderr, "Overriding cluster name: %s → %s\n", currentName, opts.clusterName)
 	}
 	payload["name"] = opts.clusterName
 
-	// Get the platform API URL from config
-	baseURL, err := pkgconfig.GetPlatformAPIURL()
+	c, err := client.New(ctx)
 	if err != nil {
 		return err
 	}
 
-	// Load AWS config for SigV4 signing
-	cfg, err := awsconfig.LoadDefaultConfig(ctx, awsconfig.WithRegion(opts.region))
-	if err != nil {
-		return fmt.Errorf("failed to load AWS config: %w", err)
-	}
-
-	// Check if placement is being overridden
 	var placementOverride string
 	if opts.placementCluster != "" {
 		if spec, ok := payload["spec"].(map[string]interface{}); ok {
@@ -327,21 +311,17 @@ func runCreateWithPayload(ctx context.Context, opts *createOptions) error {
 		}
 	}
 
-	// Build service request
 	req := &clusterservice.SubmitClusterRequest{
 		Payload:           payload,
-		PlatformAPIURL:    baseURL,
+		Client:            c,
 		PlacementOverride: placementOverride,
-		AWSConfig:         cfg,
 	}
 
-	// Submit cluster to platform API
 	resp, err := clusterservice.SubmitCluster(ctx, req)
 	if err != nil {
 		return err
 	}
 
-	// Output response based on format
 	if opts.output == "json" {
 		jsonBytes, err := json.MarshalIndent(resp.Response, "", "  ")
 		if err != nil {
@@ -349,7 +329,6 @@ func runCreateWithPayload(ctx context.Context, opts *createOptions) error {
 		}
 		fmt.Println(string(jsonBytes))
 	} else {
-		// Extract and display key fields from response
 		printClusterSummary(resp.Response)
 	}
 

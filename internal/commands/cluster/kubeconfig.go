@@ -9,8 +9,7 @@ import (
 	"path/filepath"
 	"text/template"
 
-	"github.com/openshift-online/rosa-regional-platform-cli/internal/aws"
-	"github.com/openshift-online/rosa-regional-platform-cli/internal/config"
+	"github.com/openshift-online/rosa-regional-platform-cli/internal/client"
 	"github.com/spf13/cobra"
 )
 
@@ -46,32 +45,17 @@ for AWS IAM authentication. Pipe the output to a file and use with kubectl:
 }
 
 func runKubeconfig(ctx context.Context, nameOrID string) error {
-	baseURL, err := config.GetPlatformAPIURL()
+	c, err := client.New(ctx)
 	if err != nil {
 		return err
 	}
 
-	cfg, err := aws.NewConfig(ctx)
-	if err != nil {
-		return fmt.Errorf("failed to load AWS config: %w", err)
-	}
-
-	creds, err := cfg.Credentials.Retrieve(ctx)
-	if err != nil {
-		return fmt.Errorf("failed to retrieve AWS credentials: %w", err)
-	}
-
-	region := cfg.Region
-	if region == "" {
-		region = "us-east-1"
-	}
-
-	cluster, err := fetchClusterByName(ctx, baseURL, nameOrID, creds, region)
+	cluster, err := fetchClusterByName(ctx, c, nameOrID)
 	if err != nil {
 		return err
 	}
 
-	apiEndpoint, err := fetchAPIURL(ctx, baseURL, cluster.ID, creds, region)
+	apiEndpoint, err := fetchAPIURL(ctx, c, cluster.ID)
 	if err != nil {
 		return err
 	}
@@ -92,7 +76,7 @@ func runKubeconfig(ctx context.Context, nameOrID string) error {
 		ClusterName: cluster.Name,
 		RosactlPath: rosactlPath,
 		ClusterID:   cluster.ID,
-		Region:      region,
+		Region:      c.Region(),
 	}); err != nil {
 		return fmt.Errorf("failed to render kubeconfig: %w", err)
 	}

@@ -2,57 +2,21 @@ package cluster
 
 import (
 	"context"
-	"crypto/sha256"
-	"encoding/hex"
 	"encoding/json"
 	"fmt"
-	"io"
-	"net/http"
-	"time"
+	"net/url"
 
-	awssdk "github.com/aws/aws-sdk-go-v2/aws"
-	v4 "github.com/aws/aws-sdk-go-v2/aws/signer/v4"
+	"github.com/openshift-online/rosa-regional-platform-cli/internal/client"
 )
 
-var httpClient = &http.Client{Timeout: 15 * time.Second}
-
-func signedGet(ctx context.Context, url string, creds awssdk.Credentials, region string) ([]byte, error) {
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
-	if err != nil {
-		return nil, fmt.Errorf("failed to create request: %w", err)
-	}
-
-	payloadHash := sha256.Sum256([]byte(""))
-	payloadHashStr := hex.EncodeToString(payloadHash[:])
-
-	signer := v4.NewSigner()
-	if err := signer.SignHTTP(ctx, creds, req, payloadHashStr, "execute-api", region, time.Now()); err != nil {
-		return nil, fmt.Errorf("failed to sign request: %w", err)
-	}
-
-	resp, err := httpClient.Do(req)
-	if err != nil {
-		return nil, fmt.Errorf("failed to execute request: %w", err)
-	}
-	defer func() { _ = resp.Body.Close() }()
-
-	body, err := io.ReadAll(resp.Body)
-	if err != nil {
-		return nil, fmt.Errorf("failed to read response: %w", err)
-	}
-
-	if resp.StatusCode != http.StatusOK {
-		return nil, fmt.Errorf("API request failed with status %d: %s", resp.StatusCode, string(body))
-	}
-
-	return body, nil
-}
-
-func fetchAPIURL(ctx context.Context, baseURL, clusterID string, creds awssdk.Credentials, region string) (string, error) {
-	endpoint := fmt.Sprintf("%s/api/v0/clusters/%s/statuses", baseURL, clusterID)
-	body, err := signedGet(ctx, endpoint, creds, region)
+func fetchAPIURL(ctx context.Context, c *client.Client, clusterID string) (string, error) {
+	path := fmt.Sprintf("/api/v0/clusters/%s/statuses", url.PathEscape(clusterID))
+	body, statusCode, err := c.Get(ctx, path)
 	if err != nil {
 		return "", fmt.Errorf("failed to fetch cluster statuses: %w", err)
+	}
+	if statusCode != 200 {
+		return "", fmt.Errorf("failed to fetch cluster statuses: status %d: %s", statusCode, string(body))
 	}
 
 	var envelope struct {
@@ -74,13 +38,16 @@ func fetchAPIURL(ctx context.Context, baseURL, clusterID string, creds awssdk.Cr
 	return "", nil
 }
 
-func fetchClusterByName(ctx context.Context, baseURL, name string, creds awssdk.Credentials, region string) (*clusterItem, error) {
+func fetchClusterByName(ctx context.Context, c *client.Client, name string) (*clusterItem, error) {
 	const pageSize = 100
 	for offset := 0; ; offset += pageSize {
-		endpoint := fmt.Sprintf("%s/api/v0/clusters?limit=%d&offset=%d", baseURL, pageSize, offset)
-		body, err := signedGet(ctx, endpoint, creds, region)
+		path := fmt.Sprintf("/api/v0/clusters?limit=%d&offset=%d", pageSize, offset)
+		body, statusCode, err := c.Get(ctx, path)
 		if err != nil {
 			return nil, fmt.Errorf("failed to list clusters: %w", err)
+		}
+		if statusCode != 200 {
+			return nil, fmt.Errorf("failed to list clusters: status %d: %s", statusCode, string(body))
 		}
 
 		var resp listResponse
@@ -88,9 +55,9 @@ func fetchClusterByName(ctx context.Context, baseURL, name string, creds awssdk.
 			return nil, fmt.Errorf("failed to parse cluster list: %w", err)
 		}
 
-		for _, c := range resp.Items {
-			if c.Name == name || c.ID == name {
-				return &c, nil
+		for _, item := range resp.Items {
+			if item.Name == name || item.ID == name {
+				return &item, nil
 			}
 		}
 
