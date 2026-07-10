@@ -6,15 +6,18 @@ CLI tool (`rosactl`) for managing AWS infrastructure (VPC, IAM, OIDC) for ROSA h
 
 ## Key Directories
 
-| Path | Purpose |
-|------|---------|
-| `cmd/rosactl/` | Binary entry point |
-| `internal/commands/` | Cobra CLI subcommands (clustervpc, clusteriam, bootstrap, handler, version) |
-| `internal/services/` | Business logic shared by CLI commands and Lambda handler |
-| `internal/aws/cloudformation/` | CloudFormation client and stack operations |
-| `internal/cloudformation/templates/` | Embedded CloudFormation templates (go:embed) |
-| `test/localstack/` | Integration tests against LocalStack |
-| `docs/` | Architecture, guides, and specs |
+| Path                                                  | Purpose                                                                                                  |
+| ----------------------------------------------------- | -------------------------------------------------------------------------------------------------------- |
+| `cmd/rosactl/`                                        | Binary entry point                                                                                       |
+| `internal/commands/`                                  | Cobra CLI subcommands (bootstrap, cluster, clusteriam, clusteroidc, clustervpc, handler, login, version) |
+| `internal/services/`                                  | Business logic shared by CLI commands and Lambda handler                                                 |
+| `internal/services/cluster/`                          | Cluster lifecycle service (create, list, get-token, kubeconfig)                                          |
+| `internal/services/clusteroidc/`                      | OIDC management service                                                                                  |
+| `internal/aws/cloudformation/`                        | CloudFormation client and stack operations                                                               |
+| `internal/cloudformation/templates/`                  | Embedded CloudFormation templates (go:embed)                                                             |
+| `internal/cloudformation/templates/cluster-oidc.yaml` | OIDC CloudFormation template                                                                             |
+| `test/localstack/`                                    | Integration tests against LocalStack                                                                     |
+| `docs/`                                               | Architecture, guides, and specs                                                                          |
 
 ## Commands
 

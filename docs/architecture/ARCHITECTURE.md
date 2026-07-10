@@ -2,7 +2,7 @@
 
 ## Overview
 
-`rosactl` is a command-line tool for managing AWS infrastructure for ROSA Regional HCP (Hosted Control Plane) clusters. It provides direct CloudFormation management for VPC networking and IAM resources, with optional Lambda support for event-driven workflows.
+`rosactl` is a command-line tool for managing AWS infrastructure for ROSA HyperFleet (Hosted Control Plane) clusters. It provides direct CloudFormation management for VPC networking and IAM resources, with optional Lambda support for event-driven workflows.
 
 ## Architecture Principles
 
@@ -18,100 +18,32 @@
 
 ### Primary Mode: Direct CloudFormation
 
-```
-┌─────────────────────────────────────────────────────────────────┐
-│                     Customer Environment                        │
-│                                                                 │
-│  ┌──────────────┐                                               │
-│  │   Developer  │                                               │
-│  │   Machine    │                                               │
-│  └──────┬───────┘                                               │
-│         │                                                       │
-│         │ 1. rosactl cluster-vpc create my-cluster              │
-│         │    (CLI with embedded CloudFormation templates)       │
-│         ▼                                                       │
-│  ┌──────────────────────┐                                       │
-│  │  CloudFormation      │                                       │
-│  │  Stack (VPC)         │                                       │
-│  │  rosa-my-cluster-vpc │                                       │
-│  └──────────┬───────────┘                                       │
-│             │ Creates                                           │
-│             ▼                                                   │
-│  ┌─────────────────────────────────────────┐                    │
-│  │  VPC Resources                          │                    │
-│  │  - VPC (10.0.0.0/16)                    │                    │
-│  │  - 3 Public + 3 Private Subnets         │                    │
-│  │  - Internet Gateway, NAT Gateway(s)     │                    │
-│  │  - Route Tables, Security Groups        │                    │
-│  │  - Route53 Private Hosted Zone          │                    │
-│  └─────────────────────────────────────────┘                    │
-│                                                                 │
-│         │                                                       │
-│         │ 2. rosactl cluster-iam create my-cluster              │
-│         │    --oidc-issuer-url https://d1234.cloudfront...      │
-│         ▼                                                       │
-│  ┌──────────────────────┐                                       │
-│  │  CloudFormation      │                                       │
-│  │  Stack (IAM)         │                                       │
-│  │  rosa-my-cluster-iam │                                       │
-│  └──────────┬───────────┘                                       │
-│             │ Creates                                           │
-│             ▼                                                   │
-│  ┌─────────────────────────────────────────┐                    │
-│  │  IAM Resources                          │                    │
-│  │  - IAM OIDC Provider                    │                    │
-│  │  - 7 Control Plane Roles                │                    │
-│  │  - Worker Node Role + Instance Profile  │                    │
-│  └─────────────────────────────────────────┘                    │
-│                                                                 │
-└─────────────────────────────────────────────────────────────────┘
+```mermaid
+flowchart TD
+    subgraph Customer["Customer Environment"]
+        Dev["Developer Machine"]
+        Dev -->|"1. rosactl cluster-vpc create my-cluster<br/>(CLI with embedded CF templates)"| CFvpc["CloudFormation Stack (VPC)<br/>rosa-my-cluster-vpc"]
+        CFvpc -->|Creates| VPC["VPC Resources<br/>- VPC (10.0.0.0/16)<br/>- 3 Public + 3 Private Subnets<br/>- Internet Gateway, NAT Gateway(s)<br/>- Route Tables, Security Groups<br/>- Route53 Private Hosted Zone"]
+        Dev -->|"2. rosactl cluster-iam create my-cluster<br/>--oidc-issuer-url https://d1234.cloudfront..."| CFiam["CloudFormation Stack (IAM)<br/>rosa-my-cluster-iam"]
+        CFiam -->|Creates| IAM["IAM Resources<br/>- IAM OIDC Provider<br/>- 7 Control Plane Roles<br/>- Worker Node Role + Instance Profile"]
+    end
 
-┌─────────────────────────────────────────────────────────────────┐
-│               Red Hat Management Cluster                        │
-│                                                                 │
-│  ┌──────────────────────────────────────┐                       │
-│  │  OIDC Issuer Infrastructure          │                       │
-│  │  - CloudFront Distribution           │                       │
-│  │  - Private S3 Bucket + OAC           │                       │
-│  │  - HyperShift-managed RSA Keys       │                       │
-│  └──────────────────────────────────────┘                       │
-│                                                                 │
-│  Customer's IAM OIDC Provider points here ──────────────────────┤
-│  (e.g., https://d1234.cloudfront.net/cluster-name)             │
-└─────────────────────────────────────────────────────────────────┘
+    subgraph RedHat["Red Hat Management Cluster"]
+        OIDC["OIDC Issuer Infrastructure<br/>- CloudFront Distribution<br/>- Private S3 Bucket + OAC<br/>- HyperShift-managed RSA Keys"]
+    end
+
+    IAM -.->|"IAM OIDC Provider points here<br/>(e.g., https://d1234.cloudfront.net/cluster-name)"| OIDC
 ```
 
 ### Optional Mode: Lambda for Event-Driven Workflows
 
 Lambda bootstrap is **optional** and used for CI/CD integration or event-driven automation. The same rosactl binary runs as a Lambda function via the `handler` subcommand.
 
-```text
-┌──────────────┐
-│   AWS Event  │
-│   Source     │
-└──────┬───────┘
-       │  JSON event payload
-       ▼  { "action": "apply-cluster-vpc", ... }
-┌──────────────────────┐
-│  Lambda Function     │
-│  (Container: rosactl)│
-│  CMD: ["handler"]    │
-│  - Embedded Templates│
-│  - Same Binary       │
-└──────────┬───────────┘
-           │  delegates to service layer
-           ▼
-┌──────────────────────┐
-│  Service Layer       │
-│  clustervpc /        │
-│  clusteriam          │
-└──────────┬───────────┘
-           │
-           ▼
-┌──────────────────────┐
-│  CloudFormation      │
-│  Stacks (VPC + IAM)  │
-└──────────────────────┘
+```mermaid
+flowchart TD
+    Event["AWS Event Source"] -->|"JSON event payload<br/>{ action: apply-cluster-vpc, ... }"| Lambda["Lambda Function<br/>(Container: rosactl)<br/>CMD: [handler]<br/>Embedded Templates / Same Binary"]
+    Lambda -->|"delegates to service layer"| Service["Service Layer<br/>clustervpc / clusteriam"]
+    Service --> CF["CloudFormation<br/>Stacks (VPC + IAM)"]
 ```
 
 ## Components
@@ -121,16 +53,36 @@ Lambda bootstrap is **optional** and used for CI/CD integration or event-driven 
 Command-line interface built with Cobra framework.
 
 **Cluster VPC Management**:
+
 - `cluster-vpc create` - Create VPC networking via CloudFormation
 - `cluster-vpc delete` - Delete VPC stack
 - `cluster-vpc list` - List all VPC stacks
 
 **Cluster IAM Management**:
+
 - `cluster-iam create` - Create IAM resources (OIDC provider + roles)
 - `cluster-iam delete` - Delete IAM stack
 - `cluster-iam list` - List all IAM stacks
 
+**Cluster Lifecycle Management**:
+
+- `cluster create` - Create a ROSA HyperFleet cluster
+- `cluster list` - List clusters
+- `cluster get-token` - Get cluster authentication token
+- `cluster kubeconfig` - Generate kubeconfig for cluster access
+
+**Cluster OIDC Management**:
+
+- `cluster-oidc create` - Create OIDC provider
+- `cluster-oidc delete` - Delete OIDC provider
+- `cluster-oidc list` - List OIDC providers
+
+**Authentication**:
+
+- `login` - Authenticate with the ROSA HyperFleet API
+
 **Optional Lambda Bootstrap**:
+
 - `bootstrap create` - Deploy Lambda container function via CloudFormation
 - `handler` - Start the Lambda handler runtime (used as container CMD, hidden from help)
 
@@ -140,12 +92,15 @@ Shared business logic used by both CLI commands and the Lambda handler:
 
 - `internal/services/clustervpc` - `CreateVPC()` and `DeleteVPC()` functions
 - `internal/services/clusteriam` - `CreateIAM()` and `DeleteIAM()` functions
+- `internal/services/cluster` - Cluster lifecycle operations (create, list, get-token, kubeconfig)
+- `internal/services/clusteroidc` - OIDC provider management (create, delete, list)
 
 The service layer accepts request structs with AWS config, making the same logic available to CLI commands and Lambda event handling without duplication.
 
 ### CloudFormation Client
 
 Handles direct CloudFormation stack management including:
+
 - Stack creation with parameters, tags, and capabilities
 - Stack updates with automatic fallback from create failures
 - Stack deletion with wait for completion
@@ -155,6 +110,7 @@ Handles direct CloudFormation stack management including:
 ### Template Management
 
 CloudFormation templates embedded in binary using go:embed directive:
+
 - `cluster-vpc.yaml` - VPC networking stack
 - `cluster-iam.yaml` - IAM roles and OIDC provider stack
 - `lambda-bootstrap.yaml` - Lambda function stack (optional)
@@ -174,12 +130,14 @@ Validates and strips `https://` prefix from OIDC issuer URL for use in CloudForm
 Event-driven execution mode invoked via `rosactl handler` (the container's default CMD).
 
 **Supported event actions**:
+
 - `apply-cluster-vpc` - Create VPC CloudFormation stack
 - `delete-cluster-vpc` - Delete VPC stack
 - `apply-cluster-iam` - Create IAM CloudFormation stack
 - `delete-cluster-iam` - Delete IAM stack
 
 **Event payload structure**:
+
 ```json
 {
   "action": "apply-cluster-vpc",
@@ -193,11 +151,12 @@ Event-driven execution mode invoked via `rosactl handler` (the container's defau
 ```
 
 **Response structure**:
+
 ```json
 {
   "action": "apply-cluster-vpc",
   "stack_id": "arn:aws:cloudformation:...",
-  "outputs": { "VpcId": "vpc-...", "..." : "..." },
+  "outputs": { "VpcId": "vpc-...", "...": "..." },
   "error": ""
 }
 ```
@@ -246,6 +205,7 @@ The handler delegates to the service layer (`internal/services/clustervpc` and `
 **Decision**: Extract VPC and IAM business logic into a dedicated service layer (`internal/services/`).
 
 **Rationale**:
+
 - CLI commands and Lambda handler share identical CloudFormation logic
 - Single implementation means bug fixes and changes apply to both modes automatically
 - Service functions accept request structs with `aws.Config`, making them independently testable
@@ -256,6 +216,7 @@ The handler delegates to the service layer (`internal/services/clustervpc` and `
 **Decision**: CLI commands directly call CloudFormation API; Lambda deployment is optional.
 
 **Rationale**:
+
 - Simpler user experience (no Lambda bootstrap required)
 - Faster execution (no Lambda cold start delay)
 - Direct CloudFormation error feedback
@@ -268,6 +229,7 @@ The handler delegates to the service layer (`internal/services/clustervpc` and `
 **Decision**: Embed CloudFormation templates in binary using go:embed directive.
 
 **Rationale**:
+
 - Single portable binary with no external file dependencies
 - No runtime file path resolution issues (embedded files accessed by name)
 - Templates versioned with binary
@@ -281,6 +243,7 @@ The handler delegates to the service layer (`internal/services/clustervpc` and `
 **Decision**: All resources defined in CloudFormation templates, not direct SDK calls.
 
 **Rationale**:
+
 - Declarative infrastructure (GitOps-friendly)
 - Automatic rollback on failure
 - Drift detection available
@@ -295,6 +258,7 @@ The handler delegates to the service layer (`internal/services/clustervpc` and `
 **Decision**: No support for customer-hosted OIDC issuers.
 
 **Rationale**:
+
 - Aligns with ROSA HCP service architecture
 - Simpler key management (HyperShift handles RSA keys)
 - No RSA private keys in customer accounts
@@ -308,12 +272,14 @@ The handler delegates to the service layer (`internal/services/clustervpc` and `
 ### IAM Permissions Required
 
 **For CLI Execution**:
+
 - **CloudFormation**: CreateStack, UpdateStack, DeleteStack, DescribeStacks, ListStacks, DescribeStackEvents
 - **EC2** (VPC creation): CreateVpc, CreateSubnet, CreateSecurityGroup, CreateNatGateway, CreateInternetGateway, CreateRoute, CreateRouteTable
 - **IAM** (cluster IAM): CreateRole, AttachRolePolicy, CreateInstanceProfile, CreateOpenIDConnectProvider
 - **Route53** (VPC): CreateHostedZone, DeleteHostedZone
 
 **For Lambda Execution** (optional):
+
 - Same permissions as CLI execution
 - Lambda: CreateFunction, DeleteFunction, InvokeFunction
 - ECR: GetAuthorizationToken, BatchGetImage (for container images)
@@ -329,10 +295,12 @@ The handler delegates to the service layer (`internal/services/clustervpc` and `
 ### Stack Isolation
 
 All CloudFormation stacks follow naming convention `rosa-{cluster-name}-{type}`:
+
 - VPC stacks: `rosa-my-cluster-vpc`
 - IAM stacks: `rosa-my-cluster-iam`
 
 All stacks tagged with:
+
 - `Cluster`: cluster name
 - `ManagedBy`: rosactl
 - `red-hat-managed`: true
@@ -342,6 +310,7 @@ All stacks tagged with:
 ### CloudFormation Stack Events
 
 Real-time stack events displayed during creation/deletion with:
+
 - Progress indicators (emoji-based)
 - Stack status polling with timeout
 - Detailed error messages for failed resources
@@ -350,6 +319,7 @@ Real-time stack events displayed during creation/deletion with:
 ### CLI Output
 
 Structured output format:
+
 - Stack ID and status
 - Resource outputs (VPC ID, role ARNs, etc.)
 - Clear error messages with remediation suggestions
@@ -358,6 +328,7 @@ Structured output format:
 ### CloudFormation Console
 
 Users can view:
+
 - Full stack history and drift detection
 - Resource visualization
 - Change sets for preview
@@ -377,7 +348,7 @@ Users can view:
 
 ## References
 
-- [ROSA Regional Platform Terraform](https://github.com/openshift-online/rosa-regional-platform)
+- [ROSA HyperFleet Terraform](https://github.com/openshift-online/rosa-hyperfleet)
 - [HyperShift OIDC Implementation](https://github.com/openshift/hypershift)
 - [AWS CloudFormation Best Practices](https://docs.aws.amazon.com/AWSCloudFormation/latest/UserGuide/best-practices.html)
 - [AWS Lambda Container Images](https://docs.aws.amazon.com/lambda/latest/dg/images-create.html)

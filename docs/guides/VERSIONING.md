@@ -33,14 +33,14 @@ Versioning is based on [Conventional Commits](https://www.conventionalcommits.or
 
 The commit message **type** determines the version bump:
 
-| Commit Type | Version Bump | Example |
-|-------------|--------------|---------|
-| `feat:` | **MINOR** (0.1.0 → 0.2.0) | `feat: add JWT signing command` |
-| `fix:` | **PATCH** (0.1.0 → 0.1.1) | `fix: S3 timeout in e2e tests` |
-| `perf:` | **PATCH** | `perf: optimize Lambda packaging` |
-| `refactor:` | **PATCH** | `refactor: simplify OIDC creation` |
-| `BREAKING CHANGE:` | **MAJOR** (0.1.0 → 1.0.0) | See below |
-| `docs:`, `chore:`, `test:`, `build:`, `ci:` | **PATCH** | Documentation, tooling changes |
+| Commit Type                                 | Version Bump              | Example                            |
+| ------------------------------------------- | ------------------------- | ---------------------------------- |
+| `feat:`                                     | **MINOR** (0.1.0 → 0.2.0) | `feat: add JWT signing command`    |
+| `fix:`                                      | **PATCH** (0.1.0 → 0.1.1) | `fix: S3 timeout in e2e tests`     |
+| `perf:`                                     | **PATCH**                 | `perf: optimize Lambda packaging`  |
+| `refactor:`                                 | **PATCH**                 | `refactor: simplify OIDC creation` |
+| `BREAKING CHANGE:`                          | **MAJOR** (0.1.0 → 1.0.0) | See below                          |
+| `docs:`, `chore:`, `test:`, `build:`, `ci:` | **PATCH**                 | Documentation, tooling changes     |
 
 ### Breaking Changes
 
@@ -168,7 +168,7 @@ name: Release
 on:
   push:
     tags:
-      - 'v*'
+      - "v*"
 jobs:
   release:
     runs-on: ubuntu-latest
@@ -223,7 +223,7 @@ git log $(git describe --tags --abbrev=0)..HEAD --oneline
 branches:
   - name: main
   - name: rc
-    prerelease: true  # Creates v0.2.0-rc.1, v0.2.0-rc.2, etc.
+    prerelease: true # Creates v0.2.0-rc.1, v0.2.0-rc.2, etc.
 ```
 
 ## Reference
