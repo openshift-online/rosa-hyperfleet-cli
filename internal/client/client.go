@@ -26,17 +26,20 @@ const (
 
 // Client is a SigV4-signed HTTP client for the Platform API. Construct one
 // with New and reuse it across calls — it holds a single *http.Client and
-// resolved AWS credentials.
+// a credentials provider that is consulted on every request so credentials
+// are always fresh.
 type Client struct {
-	baseURL    string
-	creds      awssdk.Credentials
-	region     string
-	httpClient *http.Client
+	baseURL     string
+	credsProvider awssdk.CredentialsProvider
+	region      string
+	httpClient  *http.Client
 }
 
-// New resolves the Platform API URL and AWS credentials once and returns a
-// ready-to-use Client. All commands should call New at the start of their
-// RunE handler and pass the Client down to any helpers that need it.
+// New resolves the Platform API URL and AWS config and returns a ready-to-use
+// Client. The credentials provider from the AWS config is retained so that
+// credentials are refreshed automatically on each request — callers that reuse
+// the Client (e.g. Lambda handlers or commands that fan out many calls) will
+// never sign with expired credentials.
 func New(ctx context.Context) (*Client, error) {
 	baseURL, err := config.GetPlatformAPIURL()
 	if err != nil {
@@ -48,20 +51,15 @@ func New(ctx context.Context) (*Client, error) {
 		return nil, fmt.Errorf("failed to load AWS config: %w", err)
 	}
 
-	creds, err := cfg.Credentials.Retrieve(ctx)
-	if err != nil {
-		return nil, fmt.Errorf("failed to retrieve AWS credentials: %w", err)
-	}
-
 	region := cfg.Region
 	if region == "" {
 		region = defaultRegion
 	}
 
 	return &Client{
-		baseURL: baseURL,
-		creds:   creds,
-		region:  region,
+		baseURL:       baseURL,
+		credsProvider: cfg.Credentials,
+		region:        region,
 		httpClient: &http.Client{
 			Timeout: defaultTimeout,
 		},
@@ -118,8 +116,13 @@ func (c *Client) do(ctx context.Context, method, path string, body []byte) ([]by
 	hash := sha256.Sum256(body)
 	payloadHash := hex.EncodeToString(hash[:])
 
+	creds, err := c.credsProvider.Retrieve(ctx)
+	if err != nil {
+		return nil, 0, fmt.Errorf("failed to retrieve AWS credentials: %w", err)
+	}
+
 	signer := v4.NewSigner()
-	if err := signer.SignHTTP(ctx, c.creds, req, payloadHash, "execute-api", c.region, time.Now()); err != nil {
+	if err := signer.SignHTTP(ctx, creds, req, payloadHash, "execute-api", c.region, time.Now()); err != nil {
 		return nil, 0, fmt.Errorf("failed to sign request: %w", err)
 	}
 
