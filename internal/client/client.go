@@ -29,10 +29,10 @@ const (
 // a credentials provider that is consulted on every request so credentials
 // are always fresh.
 type Client struct {
-	baseURL     string
+	baseURL       string
 	credsProvider awssdk.CredentialsProvider
-	region      string
-	httpClient  *http.Client
+	region        string
+	httpClient    *http.Client
 }
 
 // New resolves the Platform API URL and AWS config and returns a ready-to-use
