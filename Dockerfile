@@ -1,5 +1,5 @@
 # Build stage
-FROM registry.access.redhat.com/ubi9/go-toolset:1781757904 AS builder
+FROM registry.access.redhat.com/ubi9/go-toolset:1782980212 AS builder
 
 # Switch to root to set up workspace
 USER root
