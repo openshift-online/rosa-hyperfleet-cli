@@ -1,6 +1,7 @@
 # See the OWNERS docs at https://www.kubernetes.dev/docs/guide/owners/
 reviewers:
   - Makdaam
+  - MitaliBhalla
   - cdoan1
   - jmelis
   - newtonheath
@@ -11,6 +12,7 @@ reviewers:
   - typeid
 approvers:
   - Makdaam
+  - MitaliBhalla
   - cdoan1
   - jmelis
   - newtonheath
