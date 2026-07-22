@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"regexp"
 	"time"
 
 	"github.com/aws/aws-sdk-go-v2/aws"
@@ -32,11 +33,17 @@ type DeleteVPCRequest struct {
 	AWSConfig   aws.Config
 }
 
+var azPattern = regexp.MustCompile(`^[a-z]{2}-[a-z]+-\d[a-z]$`)
+
 // CreateVPC creates cluster VPC resources via CloudFormation
 func CreateVPC(ctx context.Context, req *CreateVPCRequest) (*CreateVPCResponse, error) {
-	// Validate required parameters
 	if len(req.AvailabilityZones) < 1 {
 		return nil, fmt.Errorf("at least 1 availability zone is required")
+	}
+	for _, az := range req.AvailabilityZones {
+		if !azPattern.MatchString(az) {
+			return nil, fmt.Errorf("invalid availability zone %q: expected format like \"us-east-1a\" (region prefix + letter suffix)", az)
+		}
 	}
 
 	// Read CloudFormation template

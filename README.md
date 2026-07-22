@@ -11,10 +11,18 @@ Manages AWS infrastructure for ROSA hosted clusters including VPC networking, IA
 ### Cluster Infrastructure Management
 
 - **VPC Networking**: Create and manage VPCs, subnets, NAT gateways, and security groups for hosted clusters
-- **IAM Resources**: Create OIDC providers and IAM roles for cluster control plane and worker nodes
-- **CloudFormation-based**: All resources deployed via CloudFormation stacks for consistency and rollback support
+- **IAM Resources**: Create IAM roles for cluster control plane and worker nodes
+- **OIDC Providers**: Create and manage IAM OIDC providers separately or alongside IAM roles
+- **CloudFormation-based**: All infrastructure resources deployed via CloudFormation stacks for consistency and rollback support
 - **Embedded templates**: CloudFormation templates embedded in binary using go:embed
 - **Direct execution**: No Lambda bootstrap required for basic operations
+
+### Cluster Lifecycle Management
+
+- **Cluster Create**: Generate cluster configurations from CloudFormation stacks and submit to the platform API
+- **Node Pools**: Create, list, and delete node pools with auto-discovered infrastructure settings
+- **Kubeconfig**: Generate kubeconfigs with AWS IAM authentication for kubectl access
+- **Platform API**: Authenticate via AWS SigV4 signing to the platform API
 
 ### Optional Lambda Bootstrap
 
@@ -48,21 +56,41 @@ make install
 ### Basic Usage
 
 ```bash
+# Login to the platform API
+rosactl login --url https://api.platform.example.com
+
 # Create VPC networking for a cluster
 rosactl cluster-vpc create my-cluster --region us-east-1
 
-# Create IAM resources (OIDC provider + roles) for a cluster
-rosactl cluster-iam create my-cluster \
+# Create IAM roles for a cluster
+rosactl cluster-iam create my-cluster --region us-east-1
+
+# Create a cluster via the platform API
+rosactl cluster create my-cluster --region us-east-1
+
+# Create OIDC provider (using issuer URL from cluster create output)
+rosactl cluster-oidc create my-cluster \
   --oidc-issuer-url https://oidc.example.com/my-cluster \
   --region us-east-1
 
-# List cluster stacks
+# Create a node pool
+rosactl nodepool create my-nodepool --cluster-id <cluster-id> --region us-east-1
+
+# List resources
+rosactl cluster list
 rosactl cluster-vpc list --region us-east-1
 rosactl cluster-iam list --region us-east-1
+rosactl cluster-oidc list --region us-east-1
+rosactl nodepool list --cluster-id <cluster-id>
 
-# Delete cluster resources
-rosactl cluster-vpc delete my-cluster --region us-east-1
+# Generate a kubeconfig for a cluster
+rosactl cluster kubeconfig my-cluster > ~/.kube/my-cluster
+
+# Delete cluster resources (reverse order)
+rosactl nodepool delete <nodepool-id>
+rosactl cluster-oidc delete my-cluster --region us-east-1
 rosactl cluster-iam delete my-cluster --region us-east-1
+rosactl cluster-vpc delete my-cluster --region us-east-1
 
 # Check version
 rosactl version
@@ -109,6 +137,68 @@ export AWS_PROFILE=your-profile-name
 
 ## Usage
 
+### Login
+
+```bash
+# Configure the CLI to connect to a platform API
+rosactl login --url https://api.platform.example.com
+```
+
+This stores the platform API base URL in `~/.config/rosactl/config.json` for future API calls (cluster, nodepool operations).
+
+### Cluster Management
+
+#### Create a Cluster
+
+```bash
+# Generate config from CloudFormation stacks and submit to platform API
+rosactl cluster create my-cluster --region us-east-1
+
+# Generate config only (dry-run mode)
+rosactl cluster create my-cluster --region us-east-1 --dry-run
+rosactl cluster create my-cluster --region us-east-1 --dry-run --output-file my-cluster.json
+
+# Submit an existing payload file
+rosactl cluster create my-cluster --region us-east-1 --payload my-cluster.json
+
+# Submit with a specific management cluster placement
+rosactl cluster create my-cluster --region us-east-1 --payload my-cluster.json --placement mgmt-cluster-01
+
+# JSON output
+rosactl cluster create my-cluster --region us-east-1 --output json
+```
+
+#### List Clusters
+
+```bash
+# List clusters from the platform API
+rosactl cluster list
+
+# Filter by status
+rosactl cluster list --status Ready
+
+# Limit results
+rosactl cluster list --limit 10
+
+# JSON output
+rosactl cluster list --output json
+```
+
+#### Generate Kubeconfig
+
+```bash
+# Generate a kubeconfig using AWS IAM authentication
+rosactl cluster kubeconfig my-cluster > ~/.kube/my-cluster
+kubectl --kubeconfig=~/.kube/my-cluster get nodes
+```
+
+#### Generate IAM Auth Token
+
+```bash
+# Generate a presigned STS token (used as kubectl exec credential plugin)
+rosactl cluster get-token --cluster-id <cluster-id>
+```
+
 ### Cluster VPC Management
 
 #### Create Cluster VPC
@@ -152,6 +242,12 @@ rosactl cluster-vpc list --region us-east-1
 rosactl cluster-vpc list --region us-east-1 --output json
 ```
 
+#### Describe Cluster VPC
+
+```bash
+rosactl cluster-vpc describe my-cluster --region us-east-1
+```
+
 #### Delete Cluster VPC
 
 ```bash
@@ -163,7 +259,10 @@ rosactl cluster-vpc delete my-cluster --region us-east-1
 #### Create Cluster IAM
 
 ```bash
-# Create IAM resources (OIDC provider + roles)
+# Create IAM roles only (activate OIDC federation later)
+rosactl cluster-iam create my-cluster --region us-east-1
+
+# Create IAM roles + OIDC provider in one step (when issuer URL is known upfront)
 rosactl cluster-iam create my-cluster \
   --oidc-issuer-url https://oidc.example.com/my-cluster \
   --region us-east-1
@@ -171,8 +270,7 @@ rosactl cluster-iam create my-cluster \
 
 **What this creates:**
 
-1. IAM OIDC Provider (with auto-fetched TLS thumbprint)
-2. 7 control plane IAM roles:
+1. 7 control plane IAM roles:
    - Ingress Operator Role
    - Kube Controller Manager Role
    - EBS CSI Driver Operator Role
@@ -180,7 +278,14 @@ rosactl cluster-iam create my-cluster \
    - Cloud Network Config Operator Role
    - Control Plane Operator Role
    - Node Pool Management Role
-3. Worker node IAM role and instance profile
+2. Worker node IAM role and instance profile
+3. (Optional) IAM OIDC Provider — if `--oidc-issuer-url` is provided
+
+#### Describe Cluster IAM
+
+```bash
+rosactl cluster-iam describe my-cluster --region us-east-1
+```
 
 #### List Cluster IAM Stacks
 
@@ -196,6 +301,67 @@ rosactl cluster-iam list --region us-east-1 --output json
 
 ```bash
 rosactl cluster-iam delete my-cluster --region us-east-1
+```
+
+### Cluster OIDC Management
+
+The `cluster-oidc` command manages the IAM OIDC provider separately from IAM roles. Use this when the OIDC issuer URL is not known at IAM creation time (e.g., it comes from the `cluster create` response).
+
+#### Create Cluster OIDC
+
+```bash
+# Create OIDC provider (requires IAM roles stack to exist)
+rosactl cluster-oidc create my-cluster \
+  --oidc-issuer-url https://oidc.example.com/my-cluster \
+  --region us-east-1
+```
+
+This creates a CloudFormation stack (`rosa-{cluster-name}-oidc`) with the IAM OIDC provider and updates the IAM roles stack trust policies.
+
+#### List Cluster OIDC Stacks
+
+```bash
+rosactl cluster-oidc list --region us-east-1
+```
+
+#### Delete Cluster OIDC
+
+```bash
+rosactl cluster-oidc delete my-cluster --region us-east-1
+```
+
+### Node Pool Management
+
+#### Create a Node Pool
+
+```bash
+# Create with defaults (auto-discovers subnet, instance profile, security groups from cluster)
+rosactl nodepool create my-nodepool --cluster-id <cluster-id> --region us-east-1
+
+# Create with explicit settings
+rosactl nodepool create my-nodepool \
+  --cluster-id <cluster-id> \
+  --replicas 3 \
+  --instance-type m5.2xlarge \
+  --region us-east-1
+
+# JSON output
+rosactl nodepool create my-nodepool --cluster-id <cluster-id> --region us-east-1 --output json
+```
+
+#### List Node Pools
+
+```bash
+rosactl nodepool list --cluster-id <cluster-id>
+
+# JSON output
+rosactl nodepool list --cluster-id <cluster-id> --output json
+```
+
+#### Delete a Node Pool
+
+```bash
+rosactl nodepool delete <nodepool-id>
 ```
 
 ### Optional: Lambda Bootstrap (Advanced)
@@ -267,56 +433,43 @@ See [docs/guides/VERSIONING.md](docs/guides/VERSIONING.md) for details on semant
 ### Complete Cluster Setup Workflow
 
 ```bash
-# Step 1: Create VPC networking for the cluster
-rosactl cluster-vpc create production-cluster --region us-east-1
-# 🌐 Creating cluster VPC resources for: production-cluster
-#    Region: us-east-1
-#    VPC CIDR: 10.0.0.0/16
-#    Single NAT Gateway: true
-#
-# 📄 Loading CloudFormation template...
-# ☁️  Creating CloudFormation stack: rosa-production-cluster-vpc
-#    This may take several minutes...
-#
-# ✅ Cluster VPC resources created successfully!
-#    Stack ID: arn:aws:cloudformation:us-east-1:123456789012:stack/rosa-production-cluster-vpc/...
-#
-# Outputs:
-#   VpcId: vpc-0abcd1234efgh5678
-#   PublicSubnetIds: subnet-111,subnet-222,subnet-333
-#   PrivateSubnetIds: subnet-444,subnet-555,subnet-666
-#   PrivateHostedZoneId: Z1234567890ABC
+# Step 1: Login to the platform API
+rosactl login --url https://api.platform.example.com
 
-# Step 2: Create IAM resources (OIDC provider and roles)
-rosactl cluster-iam create production-cluster \
+# Step 2: Create VPC networking
+rosactl cluster-vpc create production-cluster --region us-east-1
+
+# Step 3: Create IAM roles (without OIDC — issuer URL comes from cluster create)
+rosactl cluster-iam create production-cluster --region us-east-1
+
+# Step 4: Create the cluster via the platform API
+rosactl cluster create production-cluster --region us-east-1 --output json
+# Returns cluster ID and OIDC issuer URL
+
+# Step 5: Create OIDC provider (using issuer URL from step 4)
+rosactl cluster-oidc create production-cluster \
   --oidc-issuer-url https://oidc.example.com/production-cluster \
   --region us-east-1
-# 🔐 Creating cluster IAM resources...
-#    Cluster: production-cluster
-#    OIDC Issuer: https://oidc.example.com/production-cluster
-#    Region: us-east-1
-#
-# 🔍 Fetching TLS thumbprint from OIDC issuer...
-#    Thumbprint: a1b2c3d4e5f67890a1b2c3d4e5f67890a1b2c3d4
-#
-# 📄 Loading CloudFormation template...
-# ☁️  Creating CloudFormation stack: rosa-production-cluster-iam
-#    This may take several minutes...
-#
-# ✅ Cluster IAM resources created successfully!
-#    Stack ID: arn:aws:cloudformation:us-east-1:123456789012:stack/rosa-production-cluster-iam/...
-#
-# Created Resources:
-#   OIDCProviderArn: arn:aws:iam::123456789012:oidc-provider/oidc.example.com/production-cluster
-#   IngressOperatorRoleArn: arn:aws:iam::123456789012:role/production-cluster-ingress-operator
-#   WorkerRoleArn: arn:aws:iam::123456789012:role/production-cluster-worker
-#   WorkerInstanceProfileArn: arn:aws:iam::123456789012:instance-profile/production-cluster-worker
 
-# Step 3: List created resources
+# Step 6: Create a node pool
+rosactl nodepool create production-np \
+  --cluster-id <cluster-id-from-step-4> \
+  --region us-east-1
+
+# Step 7: Generate kubeconfig and access the cluster
+rosactl cluster kubeconfig production-cluster > ~/.kube/production-cluster
+kubectl --kubeconfig=~/.kube/production-cluster get nodes
+
+# Step 8: Verify resources
+rosactl cluster list
 rosactl cluster-vpc list --region us-east-1
 rosactl cluster-iam list --region us-east-1
+rosactl cluster-oidc list --region us-east-1
+rosactl nodepool list --cluster-id <cluster-id>
 
-# Step 4: Cleanup when done
+# Step 9: Cleanup when done (reverse order)
+rosactl nodepool delete <nodepool-id>
+rosactl cluster-oidc delete production-cluster --region us-east-1
 rosactl cluster-iam delete production-cluster --region us-east-1
 rosactl cluster-vpc delete production-cluster --region us-east-1
 ```
@@ -398,6 +551,7 @@ rosa-hyperfleet-cli/
 │   │   ├── clustervpc/              # VPC management subcommands
 │   │   ├── handler/                 # Lambda handler entrypoint command
 │   │   ├── login/                   # Authentication command
+│   │   ├── nodepool/                # Node pool management subcommands
 │   │   └── version/                 # Version command
 │   ├── services/                    # Shared business logic
 │   │   ├── clustervpc/              # VPC service (CreateVPC, DeleteVPC)
@@ -427,34 +581,34 @@ For detailed architecture documentation, see [docs/architecture/ARCHITECTURE.md]
 **High-level overview:**
 
 ```
-┌──────────────────────────────────────────────┐
-│            rosactl CLI / Lambda Handler       │
-│         (Cobra Framework)                    │
-└───────────────┬──────────────────────────────┘
-                │
-    ┌───────────┼───────────────┐
-    │           │               │
-┌───▼────┐  ┌──▼────┐   ┌─────▼──────┐
-│VPC Mgmt│  │IAM Mgmt│  │Lambda (opt)│
-│Commands│  │Commands│  │Handler     │
-└───┬────┘  └──┬─────┘  └─────┬──────┘
-    │          │               │
-    └──────────┼───────────────┘
-               │
-    ┌──────────▼──────────────┐
-    │     Service Layer       │
-    │  clustervpc / clusteriam│
-    └──────────┬──────────────┘
-               │
-    ┌──────────▼──────────────┐
-    │  CloudFormation Client  │
-    │   (Embedded Templates)  │
-    └──────────┬──────────────┘
-               │
-    ┌──────────▼──────────────┐
-    │   AWS CloudFormation    │
-    │  VPC | IAM | EC2 | R53  │
-    └─────────────────────────┘
+┌─────────────────────────────────────────────────────┐
+│              rosactl CLI / Lambda Handler            │
+│                  (Cobra Framework)                   │
+└────────────────────────┬────────────────────────────┘
+                         │
+    ┌────────┬───────────┼──────────┬──────────┐
+    │        │           │          │          │
+┌───▼──┐ ┌──▼───┐ ┌─────▼────┐ ┌──▼───┐ ┌────▼─────┐
+│ VPC  │ │ IAM  │ │  OIDC    │ │Cluster│ │ NodePool │
+│Cmds  │ │ Cmds │ │  Cmds    │ │ Cmds  │ │  Cmds    │
+└──┬───┘ └──┬───┘ └────┬─────┘ └──┬───┘ └────┬─────┘
+   │        │          │          │           │
+   └────────┼──────────┘          └─────┬─────┘
+            │                           │
+   ┌────────▼────────────┐    ┌─────────▼──────────┐
+   │   Service Layer     │    │   Platform API      │
+   │ clustervpc/iam/oidc │    │ cluster / nodepool  │
+   └────────┬────────────┘    └────────────────────┘
+            │
+   ┌────────▼────────────┐
+   │ CloudFormation Client│
+   │  (Embedded Templates)│
+   └────────┬─────────────┘
+            │
+   ┌────────▼────────────┐
+   │  AWS CloudFormation  │
+   │ VPC | IAM | EC2 | R53│
+   └──────────────────────┘
 ```
 
 **Key Architectural Decisions:**
@@ -471,6 +625,7 @@ rosactl uses a consistent naming convention for CloudFormation stacks:
 
 - **VPC stacks**: `rosa-{cluster-name}-vpc`
 - **IAM stacks**: `rosa-{cluster-name}-iam`
+- **OIDC stacks**: `rosa-{cluster-name}-oidc`
 
 All stacks are tagged with:
 
@@ -482,14 +637,14 @@ All stacks are tagged with:
 
 ### OIDC Thumbprint Auto-Fetch
 
-When creating IAM resources with `cluster-iam create`, rosactl automatically fetches the TLS thumbprint from the OIDC issuer URL. This requires:
+When creating OIDC providers with `cluster-oidc create` (or `cluster-iam create --oidc-issuer-url`), rosactl automatically fetches the TLS thumbprint from the OIDC issuer URL. This requires:
 
 - The OIDC issuer URL to be publicly accessible over HTTPS
 - Valid TLS certificate on the OIDC endpoint
 
 ### IAM Roles Created
 
-The `cluster-iam create` command creates the following IAM resources via CloudFormation:
+The `cluster-iam create` command creates IAM roles via CloudFormation. The OIDC provider can be created separately with `cluster-oidc create` or included in `cluster-iam create --oidc-issuer-url`:
 
 **Control Plane Roles** (7):
 
@@ -562,7 +717,7 @@ When creating OIDC Lambdas (`--handler oidc`), the RSA private key is saved to:
   rosactl cluster-vpc create my-cluster --region us-east-1
   ```
 
-**"Failed to fetch TLS thumbprint" (cluster-iam create)**
+**"Failed to fetch TLS thumbprint" (cluster-oidc create or cluster-iam create --oidc-issuer-url)**
 
 - Ensure the OIDC issuer URL is publicly accessible over HTTPS
 - Verify the TLS certificate is valid
