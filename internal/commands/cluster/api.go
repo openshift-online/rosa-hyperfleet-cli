@@ -48,6 +48,34 @@ func signedGet(ctx context.Context, url string, creds awssdk.Credentials, region
 	return body, nil
 }
 
+func signedDelete(ctx context.Context, url string, creds awssdk.Credentials, region string) ([]byte, int, error) {
+	req, err := http.NewRequestWithContext(ctx, http.MethodDelete, url, nil)
+	if err != nil {
+		return nil, 0, fmt.Errorf("failed to create request: %w", err)
+	}
+
+	payloadHash := sha256.Sum256([]byte(""))
+	payloadHashStr := hex.EncodeToString(payloadHash[:])
+
+	signer := v4.NewSigner()
+	if err := signer.SignHTTP(ctx, creds, req, payloadHashStr, "execute-api", region, time.Now()); err != nil {
+		return nil, 0, fmt.Errorf("failed to sign request: %w", err)
+	}
+
+	resp, err := httpClient.Do(req)
+	if err != nil {
+		return nil, 0, fmt.Errorf("failed to execute request: %w", err)
+	}
+	defer func() { _ = resp.Body.Close() }()
+
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return nil, resp.StatusCode, fmt.Errorf("failed to read response: %w", err)
+	}
+
+	return body, resp.StatusCode, nil
+}
+
 func fetchAPIURL(ctx context.Context, baseURL, clusterID string, creds awssdk.Credentials, region string) (string, error) {
 	endpoint := fmt.Sprintf("%s/api/v0/clusters/%s/statuses", baseURL, clusterID)
 	body, err := signedGet(ctx, endpoint, creds, region)
