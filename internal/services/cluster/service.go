@@ -1,23 +1,17 @@
 package cluster
 
 import (
-	"bytes"
 	"context"
-	"crypto/sha256"
-	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
-	"io"
-	"net/http"
 	"strings"
-	"time"
 	"unicode"
 
 	"github.com/aws/aws-sdk-go-v2/aws"
-	v4 "github.com/aws/aws-sdk-go-v2/aws/signer/v4"
 	"github.com/aws/aws-sdk-go-v2/service/sts"
 	"github.com/openshift-online/rosa-regional-platform-cli/internal/aws/cloudformation"
+	"github.com/openshift-online/rosa-regional-platform-cli/internal/client"
 )
 
 // GenerateClusterConfigRequest contains parameters for generating cluster configuration
@@ -44,7 +38,7 @@ type GenerateClusterConfigResponse struct {
 // SubmitClusterRequest contains parameters for submitting cluster to platform API
 type SubmitClusterRequest struct {
 	Payload           map[string]interface{}
-	PlatformAPIURL    string
+	Client            *client.Client
 	PlacementOverride string // Optional - overrides placement in payload if set
 	AWSConfig         aws.Config
 }
@@ -211,68 +205,19 @@ func SubmitCluster(ctx context.Context, req *SubmitClusterRequest) (*SubmitClust
 		}
 	}
 
-	// Marshal payload to JSON
 	payloadBytes, err := json.Marshal(payload)
 	if err != nil {
 		return nil, fmt.Errorf("failed to marshal payload: %w", err)
 	}
 
-	// Build the API endpoint URL
-	endpoint := fmt.Sprintf("%s/api/v0/clusters", req.PlatformAPIURL)
-
-	// Create HTTP request
-	httpReq, err := http.NewRequestWithContext(ctx, "POST", endpoint, bytes.NewReader(payloadBytes))
+	body, statusCode, err := req.Client.Post(ctx, "/api/v0/clusters", payloadBytes)
 	if err != nil {
-		return nil, fmt.Errorf("failed to create request: %w", err)
+		return nil, err
+	}
+	if statusCode < 200 || statusCode >= 300 {
+		return nil, fmt.Errorf("API request failed with status %d: %s", statusCode, string(body))
 	}
 
-	httpReq.Header.Set("Content-Type", "application/json")
-
-	// Calculate SHA256 hash of the request body
-	hash := sha256.Sum256(payloadBytes)
-	payloadHash := hex.EncodeToString(hash[:])
-
-	// Sign the request with AWS SigV4
-	signer := v4.NewSigner()
-	creds, err := req.AWSConfig.Credentials.Retrieve(ctx)
-	if err != nil {
-		return nil, fmt.Errorf("failed to retrieve AWS credentials: %w", err)
-	}
-
-	// Determine the region from AWS config
-	region := req.AWSConfig.Region
-	if region == "" {
-		region = "us-east-1" // Default region
-	}
-
-	err = signer.SignHTTP(ctx, creds, httpReq, payloadHash, "execute-api", region, time.Now())
-	if err != nil {
-		return nil, fmt.Errorf("failed to sign request: %w", err)
-	}
-
-	// Execute the request
-	client := &http.Client{
-		Timeout: 30 * time.Second,
-	}
-
-	resp, err := client.Do(httpReq)
-	if err != nil {
-		return nil, fmt.Errorf("failed to execute request: %w", err)
-	}
-	defer func() { _ = resp.Body.Close() }()
-
-	// Read the response body
-	body, err := io.ReadAll(resp.Body)
-	if err != nil {
-		return nil, fmt.Errorf("failed to read response: %w", err)
-	}
-
-	// Check for error responses
-	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
-		return nil, fmt.Errorf("API request failed with status %d: %s", resp.StatusCode, string(body))
-	}
-
-	// Parse the JSON response
 	var result map[string]interface{}
 	if err := json.Unmarshal(body, &result); err != nil {
 		return nil, fmt.Errorf("failed to parse response: %w", err)

@@ -8,8 +8,7 @@ import (
 	"os"
 	"text/tabwriter"
 
-	"github.com/openshift-online/rosa-regional-platform-cli/internal/aws"
-	"github.com/openshift-online/rosa-regional-platform-cli/internal/config"
+	"github.com/openshift-online/rosa-regional-platform-cli/internal/client"
 	"github.com/spf13/cobra"
 )
 
@@ -82,34 +81,22 @@ Example:
 }
 
 func runList(ctx context.Context, opts *listOptions) error {
-	baseURL, err := config.GetPlatformAPIURL()
+	c, err := client.New(ctx)
 	if err != nil {
 		return err
 	}
 
-	cfg, err := aws.NewConfig(ctx)
-	if err != nil {
-		return fmt.Errorf("failed to load AWS config: %w", err)
-	}
-
-	creds, err := cfg.Credentials.Retrieve(ctx)
-	if err != nil {
-		return fmt.Errorf("failed to retrieve AWS credentials: %w", err)
-	}
-
-	region := cfg.Region
-	if region == "" {
-		region = "us-east-1"
-	}
-
-	endpoint := fmt.Sprintf("%s/api/v0/clusters?limit=%d&offset=%d", baseURL, opts.limit, opts.offset)
+	path := fmt.Sprintf("/api/v0/clusters?limit=%d&offset=%d", opts.limit, opts.offset)
 	if opts.status != "" {
-		endpoint = fmt.Sprintf("%s&status=%s", endpoint, url.QueryEscape(opts.status))
+		path = fmt.Sprintf("%s&status=%s", path, url.QueryEscape(opts.status))
 	}
 
-	body, err := signedGet(ctx, endpoint, creds, region)
+	body, statusCode, err := c.Get(ctx, path)
 	if err != nil {
 		return err
+	}
+	if statusCode != 200 {
+		return fmt.Errorf("API request failed with status %d: %s", statusCode, string(body))
 	}
 
 	if opts.output == "json" {
@@ -134,14 +121,11 @@ func runList(ctx context.Context, opts *listOptions) error {
 func displayTable(clusters []clusterItem) error {
 	w := tabwriter.NewWriter(os.Stdout, 0, 0, 3, ' ', 0)
 
-	// Print header
 	if _, err := fmt.Fprintln(w, "ID\tNAME\tVERSION\tAVAILABLE\tREADY\tMESSAGE"); err != nil {
 		return err
 	}
 
-	// Print each cluster
 	for _, cluster := range clusters {
-		// Extract status and message from conditions
 		available := getConditionStatus(cluster.Status.Conditions, "Available")
 		ready := getConditionStatus(cluster.Status.Conditions, "Ready")
 		message := getConditionMessage(cluster.Status.Conditions, "Ready")
@@ -171,19 +155,16 @@ func getConditionStatus(conditions []condition, condType string) string {
 }
 
 func getConditionMessage(conditions []condition, condType string) string {
-	// First try the specified condition type
 	for _, cond := range conditions {
 		if cond.Type == condType && cond.Message != "" {
 			return cond.Message
 		}
 	}
-	// Fall back to Adapter1Successful which typically has the main status message
 	for _, cond := range conditions {
 		if cond.Type == "Adapter1Successful" && cond.Message != "" {
 			return cond.Message
 		}
 	}
-	// Finally return any condition with a message
 	for _, cond := range conditions {
 		if cond.Message != "" {
 			return cond.Message
