@@ -2,6 +2,7 @@ package cloudformation
 
 import (
 	"context"
+	"fmt"
 	"strings"
 	"time"
 
@@ -53,7 +54,7 @@ func (c *Client) CreateStack(ctx context.Context, params *CreateStackParams) (*S
 		StackName: aws.String(params.StackName),
 	}, params.WaitTimeout)
 	if err != nil {
-		return nil, wrapError(err)
+		return nil, c.wrapWaiterError(ctx, params.StackName, "creation", err)
 	}
 
 	// Get stack outputs
@@ -95,7 +96,7 @@ func (c *Client) UpdateStack(ctx context.Context, params *UpdateStackParams) (*S
 		StackName: aws.String(params.StackName),
 	}, params.WaitTimeout)
 	if err != nil {
-		return nil, wrapError(err)
+		return nil, c.wrapWaiterError(ctx, params.StackName, "update", err)
 	}
 
 	// Get stack outputs
@@ -230,6 +231,26 @@ func (c *Client) GetStackEvents(ctx context.Context, stackName string, limit int
 	}
 
 	return events, nil
+}
+
+func (c *Client) wrapWaiterError(ctx context.Context, stackName, operation string, waiterErr error) error {
+	events, err := c.GetStackEvents(ctx, stackName, 50)
+	if err != nil {
+		return fmt.Errorf("stack %s failed (could not retrieve failure details): %w", operation, waiterErr)
+	}
+
+	var reasons []string
+	for _, e := range events {
+		if strings.HasSuffix(e.ResourceStatus, "_FAILED") && e.ResourceStatusReason != "" {
+			reasons = append(reasons, fmt.Sprintf("  %s (%s): %s", e.LogicalResourceID, e.ResourceType, e.ResourceStatusReason))
+		}
+	}
+
+	if len(reasons) == 0 {
+		return fmt.Errorf("stack %s failed: %w", operation, waiterErr)
+	}
+
+	return fmt.Errorf("stack %s failed:\n%s", operation, strings.Join(reasons, "\n"))
 }
 
 // Helper functions

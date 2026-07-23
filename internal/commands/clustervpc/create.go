@@ -34,6 +34,11 @@ routing, security groups, and Route53 private hosted zone.
 Example:
   rosactl cluster-vpc create my-cluster --region us-east-1
 
+  # With a single availability zone
+  rosactl cluster-vpc create my-cluster \
+    --region us-east-1 \
+    --availability-zones us-east-1a
+
   # With custom CIDR ranges
   rosactl cluster-vpc create my-cluster \
     --region us-east-1 \
@@ -57,7 +62,7 @@ Example:
 	cmd.Flags().StringVar(&opts.vpcCidr, "vpc-cidr", "10.0.0.0/16", "CIDR block for the VPC")
 	cmd.Flags().StringVar(&opts.publicSubnetCidrs, "public-subnet-cidrs", "10.0.101.0/24,10.0.102.0/24,10.0.103.0/24", "Comma-separated public subnet CIDRs")
 	cmd.Flags().StringVar(&opts.privateSubnetCidrs, "private-subnet-cidrs", "10.0.0.0/19,10.0.32.0/19,10.0.64.0/19", "Comma-separated private subnet CIDRs")
-	cmd.Flags().StringVar(&opts.availabilityZones, "availability-zones", "", "Comma-separated availability zones, 1-3 (optional, auto-detected if empty)")
+	cmd.Flags().StringVar(&opts.availabilityZones, "availability-zones", "", "Comma-separated availability zone names, e.g. us-east-1a,us-east-1b (optional, auto-detected if empty)")
 	cmd.Flags().BoolVar(&opts.singleNatGateway, "single-nat-gateway", true, "Use single NAT gateway (true=cost savings, false=HA per-AZ)")
 
 	_ = cmd.MarkFlagRequired("region")

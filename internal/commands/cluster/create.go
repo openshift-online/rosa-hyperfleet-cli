@@ -123,11 +123,7 @@ func printClusterSummary(response map[string]interface{}) {
 	id := getStringField(response, "id")
 	version := getStringField(response, "version")
 
-	// Get OIDC issuer URL from spec
-	oidcIssuerURL := ""
-	if spec, ok := response["spec"].(map[string]interface{}); ok {
-		oidcIssuerURL = getStringField(spec, "oidcIssuerURL")
-	}
+	oidcIssuerURL := getStringField(response, "oidc_issuer_url")
 
 	// Print summary
 	fmt.Println("\n✓ Cluster created successfully")
@@ -143,6 +139,8 @@ func printClusterSummary(response map[string]interface{}) {
 	}
 	if oidcIssuerURL != "" {
 		fmt.Printf("  OIDC Issuer URL: %s\n", oidcIssuerURL)
+		fmt.Printf("\nNext step:\n")
+		fmt.Printf("  rosactl cluster-oidc create %s --oidc-issuer-url %s --region <region>\n", name, oidcIssuerURL)
 	}
 }
 
