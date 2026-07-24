@@ -18,6 +18,7 @@ type CreateOIDCRequest struct {
 	ClusterName    string
 	OIDCIssuerURL  string
 	OIDCThumbprint string // optional — fetched automatically if empty
+	NoWait         bool
 	AWSConfig      aws.Config
 }
 
@@ -28,6 +29,7 @@ type CreateOIDCResponse struct {
 
 type DeleteOIDCRequest struct {
 	ClusterName string
+	NoWait      bool
 	AWSConfig   aws.Config
 }
 
@@ -75,6 +77,7 @@ func CreateOIDC(ctx context.Context, req *CreateOIDCRequest) (*CreateOIDCRespons
 			{Key: aws.String("red-hat-managed"), Value: aws.String("true")},
 		},
 		WaitTimeout: 5 * time.Minute,
+		NoWait:      req.NoWait,
 	}
 
 	// Create (or update) the OIDC provider stack
@@ -93,7 +96,7 @@ func CreateOIDC(ctx context.Context, req *CreateOIDCRequest) (*CreateOIDCRespons
 
 	// Update the IAM stack trust policies with the real issuer domain
 	iamStackName := fmt.Sprintf("rosa-%s-iam", req.ClusterName)
-	if err := updateIAMTrustPolicies(ctx, cfnClient, req.ClusterName, iamStackName, oidcIssuerDomain); err != nil {
+	if err := updateIAMTrustPolicies(ctx, cfnClient, req.ClusterName, iamStackName, oidcIssuerDomain, req.NoWait); err != nil {
 		return nil, fmt.Errorf("OIDC provider created but failed to update IAM trust policies: %w", err)
 	}
 
@@ -113,6 +116,7 @@ func updateOIDCStack(ctx context.Context, cfnClient *cloudformation.Client, req 
 			"OIDCThumbprint": thumbprint,
 		},
 		WaitTimeout: 5 * time.Minute,
+		NoWait:      req.NoWait,
 	}
 
 	output, err := cfnClient.UpdateStack(ctx, params)
@@ -130,7 +134,7 @@ func updateOIDCStack(ctx context.Context, cfnClient *cloudformation.Client, req 
 // updateIAMTrustPolicies updates the IAM stack with the real OIDC issuer domain.
 // If the IAM stack does not exist yet (e.g. when using the deferred-IAM flow where
 // cluster-iam is created after cluster-oidc), the update is skipped.
-func updateIAMTrustPolicies(ctx context.Context, cfnClient *cloudformation.Client, clusterName, iamStackName, oidcIssuerDomain string) error {
+func updateIAMTrustPolicies(ctx context.Context, cfnClient *cloudformation.Client, clusterName, iamStackName, oidcIssuerDomain string, noWait bool) error {
 	params := &cloudformation.UpdateStackParams{
 		StackName:           iamStackName,
 		UsePreviousTemplate: true,
@@ -143,6 +147,7 @@ func updateIAMTrustPolicies(ctx context.Context, cfnClient *cloudformation.Clien
 			types.CapabilityCapabilityNamedIam,
 		},
 		WaitTimeout: 15 * time.Minute,
+		NoWait:      noWait,
 	}
 
 	_, err := cfnClient.UpdateStack(ctx, params)
@@ -167,7 +172,7 @@ func DeleteOIDC(ctx context.Context, req *DeleteOIDCRequest) error {
 	cfnClient := cloudformation.NewClient(req.AWSConfig)
 	stackName := fmt.Sprintf("rosa-%s-oidc", req.ClusterName)
 
-	err := cfnClient.DeleteStack(ctx, stackName, 5*time.Minute)
+	err := cfnClient.DeleteStack(ctx, stackName, 5*time.Minute, req.NoWait)
 	if err != nil {
 		var notFound *cloudformation.StackNotFoundError
 		if errors.As(err, &notFound) {

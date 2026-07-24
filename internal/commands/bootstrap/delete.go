@@ -13,6 +13,7 @@ import (
 type deleteOptions struct {
 	region    string
 	stackName string
+	noWait    bool
 }
 
 func newDeleteCommand() *cobra.Command {
@@ -34,6 +35,7 @@ Example:
 
 	cmd.Flags().StringVar(&opts.region, "region", "", "AWS region (required)")
 	cmd.Flags().StringVar(&opts.stackName, "stack-name", defaultStackName, "Name of the CloudFormation stack")
+	cmd.Flags().BoolVar(&opts.noWait, "no-wait", true, "Return immediately without waiting for stack deletion to complete")
 
 	_ = cmd.MarkFlagRequired("region")
 
@@ -57,12 +59,16 @@ func runDelete(ctx context.Context, opts *deleteOptions) error {
 	fmt.Println("📋 Deleting CloudFormation stack...")
 
 	// Delete stack
-	err = cfnClient.DeleteStack(ctx, opts.stackName, 10*time.Minute)
+	err = cfnClient.DeleteStack(ctx, opts.stackName, 10*time.Minute, opts.noWait)
 	if err != nil {
 		return fmt.Errorf("failed to delete stack: %w", err)
 	}
 
-	fmt.Println("✅ Stack deleted successfully!")
+	if opts.noWait {
+		fmt.Println("✅ Stack deletion submitted!")
+	} else {
+		fmt.Println("✅ Stack deleted successfully!")
+	}
 
 	return nil
 }

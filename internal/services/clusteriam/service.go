@@ -15,6 +15,7 @@ import (
 type CreateIAMRequest struct {
 	ClusterName      string
 	OIDCIssuerDomain string // optional — empty uses template default PENDING
+	NoWait           bool
 	AWSConfig        aws.Config
 }
 
@@ -25,6 +26,7 @@ type CreateIAMResponse struct {
 
 type DeleteIAMRequest struct {
 	ClusterName string
+	NoWait      bool
 	AWSConfig   aws.Config
 }
 
@@ -64,6 +66,7 @@ func CreateIAM(ctx context.Context, req *CreateIAMRequest) (*CreateIAMResponse, 
 			},
 		},
 		WaitTimeout: 15 * time.Minute,
+		NoWait:      req.NoWait,
 	}
 
 	// Only pass OIDCIssuerDomain if provided — otherwise let the template default (PENDING) apply
@@ -98,6 +101,7 @@ func updateIAM(ctx context.Context, cfnClient *cloudformation.Client, req *Creat
 			types.CapabilityCapabilityNamedIam,
 		},
 		WaitTimeout: 15 * time.Minute,
+		NoWait:      req.NoWait,
 	}
 
 	if req.OIDCIssuerDomain != "" {
@@ -133,7 +137,7 @@ func DeleteIAM(ctx context.Context, req *DeleteIAMRequest) error {
 
 	// Delete stack
 	stackName := fmt.Sprintf("rosa-%s-iam", req.ClusterName)
-	err := cfnClient.DeleteStack(ctx, stackName, 15*time.Minute)
+	err := cfnClient.DeleteStack(ctx, stackName, 15*time.Minute, req.NoWait)
 	if err != nil {
 		var notFound *cloudformation.StackNotFoundError
 		if errors.As(err, &notFound) {

@@ -15,6 +15,7 @@ type createOptions struct {
 	oidcIssuerURL  string
 	oidcThumbprint string
 	region         string
+	noWait         bool
 }
 
 func newCreateCommand() *cobra.Command {
@@ -46,6 +47,7 @@ Example:
 	cmd.Flags().StringVar(&opts.oidcIssuerURL, "oidc-issuer-url", "", "OIDC issuer URL from the cluster (required)")
 	cmd.Flags().StringVar(&opts.oidcThumbprint, "oidc-thumbprint", "", "TLS thumbprint (optional, fetched automatically if omitted)")
 	cmd.Flags().StringVar(&opts.region, "region", "", "AWS region (required)")
+	cmd.Flags().BoolVar(&opts.noWait, "no-wait", true, "Return immediately without waiting for stack creation to complete")
 
 	_ = cmd.MarkFlagRequired("oidc-issuer-url")
 	_ = cmd.MarkFlagRequired("region")
@@ -73,11 +75,14 @@ func runCreate(ctx context.Context, opts *createOptions) error {
 		ClusterName:    opts.clusterName,
 		OIDCIssuerURL:  opts.oidcIssuerURL,
 		OIDCThumbprint: opts.oidcThumbprint,
+		NoWait:         opts.noWait,
 		AWSConfig:      cfg,
 	}
 
 	fmt.Printf("Creating CloudFormation stack: rosa-%s-oidc\n", opts.clusterName)
-	fmt.Println("   This may take a few minutes...")
+	if !opts.noWait {
+		fmt.Println("   This may take a few minutes...")
+	}
 	fmt.Println()
 
 	resp, err := clusteroidc.CreateOIDC(ctx, req)
@@ -85,14 +90,19 @@ func runCreate(ctx context.Context, opts *createOptions) error {
 		return err
 	}
 
-	fmt.Println("Cluster OIDC provider created successfully!")
-	fmt.Printf("   Stack ID: %s\n", resp.StackID)
-	fmt.Println()
+	if opts.noWait {
+		fmt.Println("Stack creation submitted!")
+		fmt.Printf("   Stack ID: %s\n", resp.StackID)
+	} else {
+		fmt.Println("Cluster OIDC provider created successfully!")
+		fmt.Printf("   Stack ID: %s\n", resp.StackID)
+		fmt.Println()
 
-	if len(resp.Outputs) > 0 {
-		fmt.Println("Created Resources:")
-		for key, value := range resp.Outputs {
-			fmt.Printf("  %s: %s\n", key, value)
+		if len(resp.Outputs) > 0 {
+			fmt.Println("Created Resources:")
+			for key, value := range resp.Outputs {
+				fmt.Printf("  %s: %s\n", key, value)
+			}
 		}
 	}
 

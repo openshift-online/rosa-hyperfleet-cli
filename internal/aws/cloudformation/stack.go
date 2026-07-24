@@ -14,6 +14,7 @@ type CreateStackParams struct {
 	Capabilities []types.Capability
 	Tags         []types.Tag
 	WaitTimeout  time.Duration
+	NoWait       bool // if true, skip waiting for stack creation to complete
 }
 
 // UpdateStackParams contains parameters for updating a CloudFormation stack
@@ -24,6 +25,7 @@ type UpdateStackParams struct {
 	Parameters          map[string]string
 	Capabilities        []types.Capability
 	WaitTimeout         time.Duration
+	NoWait              bool // if true, skip waiting for stack update to complete
 }
 
 // StackOutput contains the outputs from a CloudFormation stack

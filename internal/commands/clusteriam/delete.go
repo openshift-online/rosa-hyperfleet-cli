@@ -12,6 +12,7 @@ import (
 type deleteOptions struct {
 	clusterName string
 	region      string
+	noWait      bool
 }
 
 func newDeleteCommand() *cobra.Command {
@@ -34,6 +35,7 @@ Example:
 	}
 
 	cmd.Flags().StringVar(&opts.region, "region", "", "AWS region (required)")
+	cmd.Flags().BoolVar(&opts.noWait, "no-wait", true, "Return immediately without waiting for stack deletion to complete")
 
 	_ = cmd.MarkFlagRequired("region")
 
@@ -54,11 +56,14 @@ func runDelete(ctx context.Context, opts *deleteOptions) error {
 	// Create service request
 	req := &clusteriam.DeleteIAMRequest{
 		ClusterName: opts.clusterName,
+		NoWait:      opts.noWait,
 		AWSConfig:   cfg,
 	}
 
 	fmt.Printf("☁️  Deleting CloudFormation stack: rosa-%s-iam\n", opts.clusterName)
-	fmt.Println("   This may take several minutes...")
+	if !opts.noWait {
+		fmt.Println("   This may take several minutes...")
+	}
 	fmt.Println()
 
 	// Call service layer
@@ -67,7 +72,11 @@ func runDelete(ctx context.Context, opts *deleteOptions) error {
 		return err
 	}
 
-	fmt.Println("✅ Cluster IAM resources deleted successfully!")
+	if opts.noWait {
+		fmt.Println("✅ Stack deletion submitted!")
+	} else {
+		fmt.Println("✅ Cluster IAM resources deleted successfully!")
+	}
 
 	return nil
 }
