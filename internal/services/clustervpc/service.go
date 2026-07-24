@@ -11,6 +11,7 @@ import (
 	"github.com/aws/aws-sdk-go-v2/service/cloudformation/types"
 	"github.com/openshift-online/rosa-regional-platform-cli/internal/aws/cloudformation"
 	"github.com/openshift-online/rosa-regional-platform-cli/internal/aws/ec2"
+	route53cleanup "github.com/openshift-online/rosa-regional-platform-cli/internal/aws/route53"
 	"github.com/openshift-online/rosa-regional-platform-cli/internal/cloudformation/templates"
 )
 
@@ -209,13 +210,23 @@ func DeleteVPC(ctx context.Context, req *DeleteVPCRequest) error {
 		// Stack exists but we can't read outputs (e.g. rollback state).
 		// Fall through to DeleteStack without cleanup -- no worse than before.
 		log.Printf("warning: could not read stack outputs for %s: %v (skipping pre-cleanup)", stackName, err)
-	} else if vpcID := outputs.Outputs["VpcId"]; vpcID != "" {
-		log.Printf("pre-cleaning VPC %s before stack deletion", vpcID)
-		if cleanErr := ec2.CleanVPCForDeletion(ctx, req.AWSConfig, vpcID); cleanErr != nil {
-			log.Printf("warning: VPC pre-cleanup failed: %v (proceeding with stack delete)", cleanErr)
+	} else {
+		// Pre-clean orphaned resources left by HCP teardown (workaround for OCPBUGS-74960).
+		if vpcID := outputs.Outputs["VpcId"]; vpcID != "" {
+			log.Printf("pre-cleaning VPC %s before stack deletion (workaround for OCPBUGS-74960)", vpcID)
+			if cleanErr := ec2.CleanVPCForDeletion(ctx, req.AWSConfig, vpcID); cleanErr != nil {
+				log.Printf("warning: VPC pre-cleanup failed: %v (proceeding with stack delete)", cleanErr)
+			}
+		}
+		if zoneID := outputs.Outputs["HypershiftLocalZoneId"]; zoneID != "" {
+			log.Printf("pre-cleaning hosted zone %s before stack deletion (workaround for OCPBUGS-74960)", zoneID)
+			if cleanErr := route53cleanup.CleanHostedZoneForDeletion(ctx, req.AWSConfig, zoneID); cleanErr != nil {
+				log.Printf("warning: hosted zone pre-cleanup failed: %v (proceeding with stack delete)", cleanErr)
+			}
 		}
 	}
 
+	log.Printf("deleting CloudFormation stack %s", stackName)
 	err = cfnClient.DeleteStack(ctx, stackName, 15*time.Minute)
 	if err != nil {
 		var notFound *cloudformation.StackNotFoundError
