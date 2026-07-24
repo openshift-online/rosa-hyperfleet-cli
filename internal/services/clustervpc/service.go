@@ -4,11 +4,13 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"log"
 	"time"
 
 	"github.com/aws/aws-sdk-go-v2/aws"
 	"github.com/aws/aws-sdk-go-v2/service/cloudformation/types"
 	"github.com/openshift-online/rosa-regional-platform-cli/internal/aws/cloudformation"
+	"github.com/openshift-online/rosa-regional-platform-cli/internal/aws/ec2"
 	"github.com/openshift-online/rosa-regional-platform-cli/internal/cloudformation/templates"
 )
 
@@ -190,14 +192,31 @@ func updateVPC(ctx context.Context, cfnClient *cloudformation.Client, req *Creat
 	}, nil
 }
 
-// DeleteVPC deletes cluster VPC resources
+// DeleteVPC deletes cluster VPC resources. It pre-cleans orphaned ENIs and
+// security groups left behind by hosted cluster teardown so that the
+// CloudFormation stack delete succeeds on the first attempt.
 func DeleteVPC(ctx context.Context, req *DeleteVPCRequest) error {
-	// Create CloudFormation client
 	cfnClient := cloudformation.NewClient(req.AWSConfig)
-
-	// Delete stack
 	stackName := fmt.Sprintf("rosa-%s-vpc", req.ClusterName)
-	err := cfnClient.DeleteStack(ctx, stackName, 15*time.Minute)
+
+	// Get the VPC ID from stack outputs so we can clean up orphaned resources.
+	outputs, err := cfnClient.GetStackOutputs(ctx, stackName)
+	if err != nil {
+		var notFound *cloudformation.StackNotFoundError
+		if errors.As(err, &notFound) {
+			return nil
+		}
+		// Stack exists but we can't read outputs (e.g. rollback state).
+		// Fall through to DeleteStack without cleanup -- no worse than before.
+		log.Printf("warning: could not read stack outputs for %s: %v (skipping pre-cleanup)", stackName, err)
+	} else if vpcID := outputs.Outputs["VpcId"]; vpcID != "" {
+		log.Printf("pre-cleaning VPC %s before stack deletion", vpcID)
+		if cleanErr := ec2.CleanVPCForDeletion(ctx, req.AWSConfig, vpcID); cleanErr != nil {
+			log.Printf("warning: VPC pre-cleanup failed: %v (proceeding with stack delete)", cleanErr)
+		}
+	}
+
+	err = cfnClient.DeleteStack(ctx, stackName, 15*time.Minute)
 	if err != nil {
 		var notFound *cloudformation.StackNotFoundError
 		if errors.As(err, &notFound) {
