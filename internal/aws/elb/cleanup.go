@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"log"
+	"time"
 
 	"github.com/aws/aws-sdk-go-v2/aws"
 	elbv1 "github.com/aws/aws-sdk-go-v2/service/elasticloadbalancing"
@@ -71,12 +72,18 @@ func deleteALBsNLBs(ctx context.Context, client *elbv2.Client, vpcID string) err
 		}
 	}
 
+	waiter := elbv2.NewLoadBalancersDeletedWaiter(client)
 	for _, arn := range arns {
 		log.Printf("  deleting ALB/NLB %s", arn)
 		if _, err := client.DeleteLoadBalancer(ctx, &elbv2.DeleteLoadBalancerInput{
 			LoadBalancerArn: aws.String(arn),
 		}); err != nil {
 			return fmt.Errorf("delete ALB/NLB %s: %w", arn, err)
+		}
+		if err := waiter.Wait(ctx, &elbv2.DescribeLoadBalancersInput{
+			LoadBalancerArns: []string{arn},
+		}, 5*time.Minute); err != nil {
+			return fmt.Errorf("waiting for ALB/NLB %s deletion: %w", arn, err)
 		}
 	}
 
