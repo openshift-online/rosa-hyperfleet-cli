@@ -12,6 +12,7 @@ import (
 	"github.com/aws/aws-sdk-go-v2/service/cloudformation/types"
 	"github.com/openshift-online/rosa-regional-platform-cli/internal/aws/cloudformation"
 	"github.com/openshift-online/rosa-regional-platform-cli/internal/aws/ec2"
+	"github.com/openshift-online/rosa-regional-platform-cli/internal/aws/elb"
 	route53cleanup "github.com/openshift-online/rosa-regional-platform-cli/internal/aws/route53"
 	"github.com/openshift-online/rosa-regional-platform-cli/internal/cloudformation/templates"
 )
@@ -224,6 +225,12 @@ func DeleteVPC(ctx context.Context, req *DeleteVPCRequest) error {
 	} else {
 		// Pre-clean orphaned resources left by HCP teardown (workaround for OCPBUGS-74960).
 		if vpcID := outputs.Outputs["VpcId"]; vpcID != "" {
+			// ELBs must be deleted before SGs: the CCM creates classic ELBs that hold
+			// SG dependencies (k8s-elb-* names), causing DependencyViolation on SG delete.
+			log.Printf("pre-cleaning ELBs in VPC %s before stack deletion (workaround for OCPBUGS-74960)", vpcID)
+			if cleanErr := elb.CleanVPCLoadBalancers(ctx, req.AWSConfig, vpcID); cleanErr != nil {
+				log.Printf("warning: ELB pre-cleanup failed: %v (proceeding with VPC cleanup)", cleanErr)
+			}
 			log.Printf("pre-cleaning VPC %s before stack deletion (workaround for OCPBUGS-74960)", vpcID)
 			if cleanErr := ec2.CleanVPCForDeletion(ctx, req.AWSConfig, vpcID); cleanErr != nil {
 				log.Printf("warning: VPC pre-cleanup failed: %v (proceeding with stack delete)", cleanErr)
