@@ -39,7 +39,7 @@ go mod download
 make build
 ```
 
-The binary will be available at `./rosactl`.
+The binary will be available at `./bin/rosactl`.
 
 4. Run tests
 

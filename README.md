@@ -125,22 +125,22 @@ rosactl cluster create my-cluster --region us-east-1 --payload my-cluster.json
 rosactl cluster create my-cluster --region us-east-1 --payload my-cluster.json --placement mgmt-cluster-01
 ```
 
-| Flag | Default | Description |
-|---|---|---|
-| `--region` | `us-east-1` | AWS region |
-| `--dry-run` | `false` | Generate config only, do not submit |
-| `--output-file` | | Output file for config (defaults to `<name>-cluster.json` in dry-run) |
-| `--payload` | | JSON payload file to POST (mutually exclusive with `--dry-run`) |
-| `--placement` | | Management cluster name |
-| `--version` | `4.22` | OpenShift version |
-| `--compute-replicas` | `3` | Number of compute replicas |
-| `--compute-machine-type` | `m5.xlarge` | EC2 instance type for compute |
-| `--multi-az` | `true` | Multi-AZ deployment |
-| `--provider` | `aws` | Cloud provider |
-| `--target-project-id` | | Target project ID |
-| `--label-environment` | `dev` | Environment label |
-| `--label-team` | `platform` | Team label |
-| `--output` | | Output format (`json`) |
+| Flag                     | Default     | Description                                                           |
+| ------------------------ | ----------- | --------------------------------------------------------------------- |
+| `--region`               | `us-east-1` | AWS region                                                            |
+| `--dry-run`              | `false`     | Generate config only, do not submit                                   |
+| `--output-file`          |             | Output file for config (defaults to `<name>-cluster.json` in dry-run) |
+| `--payload`              |             | JSON payload file to POST (mutually exclusive with `--dry-run`)       |
+| `--placement`            |             | Management cluster name                                               |
+| `--version`              | `4.22`      | OpenShift version                                                     |
+| `--compute-replicas`     | `3`         | Number of compute replicas                                            |
+| `--compute-machine-type` | `m5.xlarge` | EC2 instance type for compute                                         |
+| `--multi-az`             | `true`      | Multi-AZ deployment                                                   |
+| `--provider`             | `aws`       | Cloud provider                                                        |
+| `--target-project-id`    |             | Target project ID                                                     |
+| `--label-environment`    | `dev`       | Environment label                                                     |
+| `--label-team`           | `platform`  | Team label                                                            |
+| `--output`               |             | Output format (`json`)                                                |
 
 #### list
 
@@ -150,12 +150,12 @@ rosactl cluster list --status Ready --limit 10
 rosactl cluster list --output json
 ```
 
-| Flag | Default | Description |
-|---|---|---|
-| `--limit` | `50` | Max clusters to return (1-100) |
-| `--offset` | `0` | Number of clusters to skip |
-| `--status` | | Filter: Pending, Progressing, Ready, Failed |
-| `-o`, `--output` | `table` | Output format: `table` or `json` |
+| Flag             | Default | Description                                 |
+| ---------------- | ------- | ------------------------------------------- |
+| `--limit`        | `50`    | Max clusters to return (1-100)              |
+| `--offset`       | `0`     | Number of clusters to skip                  |
+| `--status`       |         | Filter: Pending, Progressing, Ready, Failed |
+| `-o`, `--output` | `table` | Output format: `table` or `json`            |
 
 #### kubeconfig
 
@@ -189,14 +189,15 @@ rosactl cluster-vpc create my-cluster \
   --single-nat-gateway=false
 ```
 
-| Flag | Default | Description |
-|---|---|---|
-| `--region` | | AWS region (required) |
-| `--vpc-cidr` | `10.0.0.0/16` | VPC CIDR block |
-| `--public-subnet-cidrs` | `10.0.101.0/24,10.0.102.0/24,10.0.103.0/24` | Public subnet CIDRs |
-| `--private-subnet-cidrs` | `10.0.0.0/19,10.0.32.0/19,10.0.64.0/19` | Private subnet CIDRs |
-| `--availability-zones` | | AZ names, e.g. `us-east-1a,us-east-1b` (auto-detected if empty) |
-| `--single-nat-gateway` | `true` | Single NAT gateway (cost savings) vs per-AZ (HA) |
+| Flag                     | Default                                     | Description                                                        |
+| ------------------------ | ------------------------------------------- | ------------------------------------------------------------------ |
+| `--region`               |                                             | AWS region (required)                                              |
+| `--vpc-cidr`             | `10.0.0.0/16`                               | VPC CIDR block                                                     |
+| `--public-subnet-cidrs`  | `10.0.101.0/24,10.0.102.0/24,10.0.103.0/24` | Public subnet CIDRs                                                |
+| `--private-subnet-cidrs` | `10.0.0.0/19,10.0.32.0/19,10.0.64.0/19`     | Private subnet CIDRs                                               |
+| `--availability-zones`   |                                             | AZ names, e.g. `us-east-1a,us-east-1b` (auto-detected if empty)    |
+| `--single-nat-gateway`   | `true`                                      | Single NAT gateway (cost savings) vs per-AZ (HA)                   |
+| `--no-wait`              | `false`                                     | Return immediately without waiting for stack operation to complete |
 
 #### list / describe / delete
 
@@ -220,10 +221,11 @@ rosactl cluster-iam create my-cluster \
   --region us-east-1
 ```
 
-| Flag | Default | Description |
-|---|---|---|
-| `--region` | | AWS region (required) |
-| `--oidc-issuer-url` | | Also creates OIDC provider if provided |
+| Flag                | Default | Description                                                        |
+| ------------------- | ------- | ------------------------------------------------------------------ |
+| `--region`          |         | AWS region (required)                                              |
+| `--oidc-issuer-url` |         | Also creates OIDC provider if provided                             |
+| `--no-wait`         | `false` | Return immediately without waiting for stack operation to complete |
 
 #### list / describe / delete
 
@@ -245,11 +247,12 @@ rosactl cluster-oidc create my-cluster \
   --region us-east-1
 ```
 
-| Flag | Default | Description |
-|---|---|---|
-| `--oidc-issuer-url` | | OIDC issuer URL (required) |
-| `--oidc-thumbprint` | | TLS thumbprint (auto-fetched if omitted) |
-| `--region` | | AWS region (required) |
+| Flag                | Default | Description                                                        |
+| ------------------- | ------- | ------------------------------------------------------------------ |
+| `--oidc-issuer-url` |         | OIDC issuer URL (required)                                         |
+| `--oidc-thumbprint` |         | TLS thumbprint (auto-fetched if omitted)                           |
+| `--region`          |         | AWS region (required)                                              |
+| `--no-wait`         | `false` | Return immediately without waiting for stack operation to complete |
 
 Creates a CloudFormation stack (`rosa-{name}-oidc`) and updates the IAM roles stack trust policies.
 
@@ -275,15 +278,15 @@ rosactl nodepool create my-np \
   --region us-east-1
 ```
 
-| Flag | Default | Description |
-|---|---|---|
-| `--cluster-id` | | Cluster ID (required) |
-| `--replicas` | `2` | Number of worker replicas |
-| `--instance-type` | `m6a.xlarge` | EC2 instance type |
-| `--subnet-id` | | Subnet ID (auto-discovered from cluster if omitted) |
-| `--instance-profile` | | IAM instance profile (auto-discovered if omitted) |
-| `--security-groups` | | Security group IDs (auto-discovered if omitted) |
-| `-o`, `--output` | | Output format (`json`) |
+| Flag                 | Default      | Description                                         |
+| -------------------- | ------------ | --------------------------------------------------- |
+| `--cluster-id`       |              | Cluster ID (required)                               |
+| `--replicas`         | `2`          | Number of worker replicas                           |
+| `--instance-type`    | `m6a.xlarge` | EC2 instance type                                   |
+| `--subnet-id`        |              | Subnet ID (auto-discovered from cluster if omitted) |
+| `--instance-profile` |              | IAM instance profile (auto-discovered if omitted)   |
+| `--security-groups`  |              | Security group IDs (auto-discovered if omitted)     |
+| `-o`, `--output`     |              | Output format (`json`)                              |
 
 #### list
 
@@ -292,11 +295,11 @@ rosactl nodepool list --cluster-id <cluster-id>
 rosactl nodepool list --cluster-id <cluster-id> --output json
 ```
 
-| Flag | Default | Description |
-|---|---|---|
-| `--cluster-id` | | Cluster ID (required) |
-| `--limit` | `50` | Max results (1-100) |
-| `--offset` | `0` | Number to skip |
+| Flag             | Default | Description                      |
+| ---------------- | ------- | -------------------------------- |
+| `--cluster-id`   |         | Cluster ID (required)            |
+| `--limit`        | `50`    | Max results (1-100)              |
+| `--offset`       | `0`     | Number to skip                   |
 | `-o`, `--output` | `table` | Output format: `table` or `json` |
 
 #### delete
@@ -322,12 +325,13 @@ rosactl bootstrap status --region us-east-1
 rosactl bootstrap delete --region us-east-1
 ```
 
-| Flag | Default | Description |
-|---|---|---|
-| `--image-uri` | | ECR container image URI (required for create) |
-| `--function-name` | `rosa-regional-platform-lambda` | Lambda function name |
-| `--stack-name` | `rosa-regional-platform-lambda` | CloudFormation stack name |
-| `--region` | | AWS region (required) |
+| Flag              | Default                         | Description                                                        |
+| ----------------- | ------------------------------- | ------------------------------------------------------------------ |
+| `--image-uri`     |                                 | ECR container image URI (required for create)                      |
+| `--function-name` | `rosa-regional-platform-lambda` | Lambda function name                                               |
+| `--stack-name`    | `rosa-regional-platform-lambda` | CloudFormation stack name                                          |
+| `--region`        |                                 | AWS region (required)                                              |
+| `--no-wait`       | `false`                         | Return immediately without waiting for stack operation to complete |
 
 The Lambda accepts JSON event payloads with an `action` field: `apply-cluster-vpc`, `delete-cluster-vpc`, `apply-cluster-iam`, `delete-cluster-iam`.
 
@@ -341,11 +345,11 @@ rosactl version
 
 ### Naming Convention
 
-| Stack | Name |
-|---|---|
-| VPC | `rosa-{cluster-name}-vpc` |
-| IAM | `rosa-{cluster-name}-iam` |
-| OIDC | `rosa-{cluster-name}-oidc` |
+| Stack | Name                       |
+| ----- | -------------------------- |
+| VPC   | `rosa-{cluster-name}-vpc`  |
+| IAM   | `rosa-{cluster-name}-iam`  |
+| OIDC  | `rosa-{cluster-name}-oidc` |
 
 All stacks are tagged with `Cluster`, `ManagedBy: rosactl`, and `red-hat-managed: true`.
 

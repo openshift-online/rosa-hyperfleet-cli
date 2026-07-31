@@ -386,14 +386,11 @@ Users can view:
 ## Future Enhancements
 
 1. CloudFormation change sets for safer updates before applying
-2. Dry-run mode to preview resource changes
-3. Multi-region support for replicating resources
-4. Stack outputs export to file (JSON/YAML)
-5. Template validation with cfn-lint integration
-6. Rollback subcommand for failed stacks
-7. Parallel stack management (create VPC and IAM concurrently)
-8. Verbose logging flag for detailed AWS SDK output
-9. Cost estimation before creating resources
+2. Multi-region support for replicating resources
+3. Template validation with cfn-lint integration
+4. Rollback subcommand for failed stacks
+5. Parallel stack management (create VPC and IAM concurrently)
+6. Cost estimation before creating resources
 
 ## References
 
