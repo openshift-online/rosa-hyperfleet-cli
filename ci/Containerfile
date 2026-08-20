@@ -1,24 +1,6 @@
 # CI build-root image for rosa-regional-platform-cli PR checks.
 # Used by ci-operator via build_root.project_image.dockerfile_path.
+FROM registry.ci.openshift.org/openshift/release:rhel-9-release-golang-1.26-openshift-4.23
 
-FROM registry.ci.openshift.org/openshift/release:rhel-9-release-golang-1.25-openshift-4.22
-
-ARG GOLANGCI_LINT_VERSION=v1.62.2
-
-# Install golangci-lint using go install to ensure it's built with Go 1.25
-# This avoids "Go language version used to build golangci-lint is lower than targeted version" errors
-# golangci-lint install must not use vendor-only mode from the base image; allow
-# resolving modules for this one command only (not as a global default for CI).
-RUN GOFLAGS=-mod=mod go install github.com/golangci/golangci-lint/cmd/golangci-lint@${GOLANGCI_LINT_VERSION} && \
-golangci-lint --version
-
-# Pre-create cache directories writable by any UID (OpenShift runs as random UID)
-RUN mkdir -p /tmp/.golangci-lint-cache /tmp/.gocache /tmp/.gomodcache && \
-chmod -R 777 /tmp/.golangci-lint-cache /tmp/.gocache /tmp/.gomodcache
-
-# Default for repo checks: refuse silent go.mod/go.sum updates. Use GOFLAGS=-mod=mod
-# only on commands that intentionally modify modules (e.g. go mod tidy).
-ENV GOFLAGS="-mod=readonly"
-ENV GOLANGCI_LINT_CACHE=/tmp/.golangci-lint-cache
-ENV GOCACHE=/tmp/.gocache
-ENV GOMODCACHE=/tmp/.gomodcache
+# Allow Go toolchain auto-download for go.mod version requirements (1.26.3)
+ENV GOTOOLCHAIN=auto

@@ -4,15 +4,16 @@ import (
 	"bufio"
 	"context"
 	"fmt"
-	"net/http"
-	"net/url"
 	"os"
 	"strings"
 	"time"
 
+	v1alpha1 "github.com/openshift-online/rosa-hyperfleet-api/api/v1alpha1/public"
+	"github.com/openshift-online/rosa-hyperfleet-api/clientset/platform"
 	"github.com/openshift-online/rosa-regional-platform-cli/internal/aws"
-	"github.com/openshift-online/rosa-regional-platform-cli/internal/config"
+	platformclient "github.com/openshift-online/rosa-regional-platform-cli/internal/platform"
 	"github.com/spf13/cobra"
+	k8serrors "k8s.io/apimachinery/pkg/api/errors"
 )
 
 type deleteOptions struct {
@@ -49,34 +50,32 @@ Examples:
 }
 
 func runDeleteCluster(ctx context.Context, nameOrID string, opts *deleteOptions) error {
-	baseURL, err := config.GetPlatformAPIURL()
-	if err != nil {
-		return err
-	}
-
 	cfg, err := aws.NewConfig(ctx)
 	if err != nil {
 		return fmt.Errorf("failed to load AWS config: %w", err)
 	}
 
-	creds, err := cfg.Credentials.Retrieve(ctx)
-	if err != nil {
-		return fmt.Errorf("failed to retrieve AWS credentials: %w", err)
-	}
-
-	region := cfg.Region
-	if region == "" {
+	if cfg.Region == "" {
 		return aws.ErrRegionRequired
 	}
 
-	// Resolve name → ID if needed (fetchClusterByName matches on both name and ID)
-	cluster, err := fetchClusterByName(ctx, baseURL, nameOrID, creds, region)
+	// Create the clientset
+	cs, err := platformclient.NewClientset(ctx, cfg)
+	if err != nil {
+		return fmt.Errorf("failed to create clientset: %w", err)
+	}
+
+	// Fetch cluster to resolve name → ID and get display name
+	cluster, err := getClusterByNameOrID(ctx, cs, nameOrID)
 	if err != nil {
 		return err
 	}
 
+	clusterName := cluster.Name
+	clusterID := string(cluster.UID)
+
 	if !opts.yes {
-		fmt.Fprintf(os.Stderr, "Are you sure you want to delete cluster %q (ID: %s)? [y/N] ", cluster.Name, cluster.ID)
+		fmt.Fprintf(os.Stderr, "Are you sure you want to delete cluster %q (ID: %s)? [y/N] ", clusterName, clusterID)
 		reader := bufio.NewReader(os.Stdin)
 		answer, err := reader.ReadString('\n')
 		if err != nil {
@@ -88,48 +87,40 @@ func runDeleteCluster(ctx context.Context, nameOrID string, opts *deleteOptions)
 		}
 	}
 
-	endpoint := fmt.Sprintf("%s/api/v0/clusters/%s", baseURL, url.PathEscape(cluster.ID))
-	body, statusCode, err := signedDelete(ctx, endpoint, creds, region)
+	// Delete the cluster via SDK
+	err = cs.HyperfleetV1alpha1().Clusters().Delete(ctx, clusterID, platform.DeleteOptions{})
 	if err != nil {
-		return fmt.Errorf("delete request failed: %w", err)
+		if k8serrors.IsNotFound(err) {
+			return fmt.Errorf("cluster %q not found (may have already been deleted)", nameOrID)
+		}
+		return fmt.Errorf("failed to delete cluster: %w", err)
 	}
 
-	switch statusCode {
-	case http.StatusAccepted:
-		fmt.Fprintf(os.Stderr, "Cluster %q (ID: %s) deletion initiated.\n", cluster.Name, cluster.ID)
-	case http.StatusNotFound:
-		return fmt.Errorf("cluster %q not found (may have already been deleted)", nameOrID)
-	default:
-		return fmt.Errorf("API request failed with status %d: %s", statusCode, string(body))
-	}
+	fmt.Fprintf(os.Stderr, "Cluster %q (ID: %s) deletion initiated.\n", clusterName, clusterID)
 
 	if !opts.wait {
 		return nil
 	}
 
-	fmt.Fprintf(os.Stderr, "Waiting for cluster %q to be deleted...\n", cluster.Name)
+	fmt.Fprintf(os.Stderr, "Waiting for cluster %q to be deleted...\n", clusterName)
 	const (
 		pollInterval = 15 * time.Second
 		timeout      = 10 * time.Minute
 	)
-	deadline := time.Now().Add(timeout)
-	checkEndpoint := fmt.Sprintf("%s/api/v0/clusters/%s", baseURL, url.PathEscape(cluster.ID))
-	for time.Now().Before(deadline) {
-		time.Sleep(pollInterval)
 
-		_, err := signedGet(ctx, checkEndpoint, creds, region)
-		if err != nil {
-			// signedGet returns an error for non-200; a 404/410 means deletion is complete
-			if strings.Contains(err.Error(), "404") || strings.Contains(err.Error(), "410") {
-				fmt.Fprintf(os.Stderr, "Cluster %q deleted successfully.\n", cluster.Name)
-				return nil
-			}
-			// Transient error — keep polling
-			fmt.Fprintf(os.Stderr, "Polling cluster status (transient error): %v\n", err)
-			continue
+	// Use the SDK's WaitUntil to poll for deletion
+	err = cs.HyperfleetV1alpha1().Clusters().WaitUntil(ctx, clusterID, func(c *v1alpha1.Cluster) bool {
+		// Cluster is deleted when it's not found (c == nil)
+		return c == nil
+	}, pollInterval, timeout)
+
+	if err != nil {
+		if err == context.DeadlineExceeded {
+			return fmt.Errorf("timed out waiting for cluster %q to be deleted after %s", clusterName, timeout)
 		}
-		fmt.Fprintf(os.Stderr, "Cluster %q still deleting...\n", cluster.Name)
+		return fmt.Errorf("error waiting for cluster deletion: %w", err)
 	}
 
-	return fmt.Errorf("timed out waiting for cluster %q to be deleted after %s", cluster.Name, timeout)
+	fmt.Fprintf(os.Stderr, "Cluster %q deleted successfully.\n", clusterName)
+	return nil
 }

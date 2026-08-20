@@ -10,7 +10,7 @@ import (
 	"text/template"
 
 	"github.com/openshift-online/rosa-regional-platform-cli/internal/aws"
-	"github.com/openshift-online/rosa-regional-platform-cli/internal/config"
+	platformclient "github.com/openshift-online/rosa-regional-platform-cli/internal/platform"
 	"github.com/spf13/cobra"
 )
 
@@ -46,19 +46,9 @@ for AWS IAM authentication. Pipe the output to a file and use with kubectl:
 }
 
 func runKubeconfig(ctx context.Context, nameOrID string) error {
-	baseURL, err := config.GetPlatformAPIURL()
-	if err != nil {
-		return err
-	}
-
 	cfg, err := aws.NewConfig(ctx)
 	if err != nil {
 		return fmt.Errorf("failed to load AWS config: %w", err)
-	}
-
-	creds, err := cfg.Credentials.Retrieve(ctx)
-	if err != nil {
-		return fmt.Errorf("failed to retrieve AWS credentials: %w", err)
 	}
 
 	region := cfg.Region
@@ -66,18 +56,26 @@ func runKubeconfig(ctx context.Context, nameOrID string) error {
 		region = "us-east-1"
 	}
 
-	cluster, err := fetchClusterByName(ctx, baseURL, nameOrID, creds, region)
+	// Create the clientset
+	cs, err := platformclient.NewClientset(ctx, cfg)
+	if err != nil {
+		return fmt.Errorf("failed to create clientset: %w", err)
+	}
+
+	// Fetch cluster via SDK (try by ID first, then search by name)
+	cluster, err := getClusterByNameOrID(ctx, cs, nameOrID)
 	if err != nil {
 		return err
 	}
 
-	apiEndpoint, err := fetchAPIURL(ctx, baseURL, cluster.ID, creds, region)
-	if err != nil {
-		return err
-	}
-	if apiEndpoint == "" {
+	// Extract API endpoint from cluster status
+	if cluster.Status.ControlPlaneEndpoint.Host == "" {
 		return fmt.Errorf("cluster %q API endpoint not available yet", nameOrID)
 	}
+
+	apiEndpoint := fmt.Sprintf("https://%s:%d",
+		cluster.Status.ControlPlaneEndpoint.Host,
+		cluster.Status.ControlPlaneEndpoint.Port)
 
 	rosactlPath, _ := os.Executable()
 	if rosactlPath == "" {
@@ -91,7 +89,7 @@ func runKubeconfig(ctx context.Context, nameOrID string) error {
 		Server:      apiEndpoint,
 		ClusterName: cluster.Name,
 		RosactlPath: rosactlPath,
-		ClusterID:   cluster.ID,
+		ClusterID:   string(cluster.UID),
 		Region:      region,
 	}); err != nil {
 		return fmt.Errorf("failed to render kubeconfig: %w", err)

@@ -1,23 +1,19 @@
 package cluster
 
 import (
-	"bytes"
 	"context"
-	"crypto/sha256"
-	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
-	"io"
-	"net/http"
 	"strings"
-	"time"
 	"unicode"
 
 	"github.com/aws/aws-sdk-go-v2/aws"
-	v4 "github.com/aws/aws-sdk-go-v2/aws/signer/v4"
 	"github.com/aws/aws-sdk-go-v2/service/sts"
+	v1alpha1 "github.com/openshift-online/rosa-hyperfleet-api/api/v1alpha1/public"
+	"github.com/openshift-online/rosa-hyperfleet-api/clientset/platform"
 	"github.com/openshift-online/rosa-regional-platform-cli/internal/aws/cloudformation"
+	platformclient "github.com/openshift-online/rosa-regional-platform-cli/internal/platform"
 )
 
 // GenerateClusterConfigRequest contains parameters for generating cluster configuration
@@ -124,19 +120,21 @@ func GenerateClusterConfig(ctx context.Context, req *GenerateClusterConfigReques
 	}
 
 	// Build labels
-	labels := map[string]interface{}{
+	labels := map[string]string{
 		"environment": req.LabelEnvironment,
 		"team":        req.LabelTeam,
 		"region":      req.Region,
 	}
 
-	// Build the cluster object
+	// Build the cluster object with Kubernetes-style structure
 	clusterObj := map[string]interface{}{
-		"kind":              "Cluster",
-		"name":              req.ClusterName,
-		"target_project_id": req.TargetProjectID,
-		"labels":            labels,
-		"spec":              spec,
+		"apiVersion": "hyperfleet.io/v1alpha1",
+		"kind":       "Cluster",
+		"metadata": map[string]interface{}{
+			"name":   req.ClusterName,
+			"labels": labels,
+		},
+		"spec": spec,
 	}
 
 	return &GenerateClusterConfigResponse{
@@ -196,8 +194,14 @@ func computeIAMRoleARNs(clusterName, accountID string) map[string]string {
 	}
 }
 
-// SubmitCluster submits a cluster configuration to the platform API
+// SubmitCluster submits a cluster configuration to the platform API using the clientset SDK
 func SubmitCluster(ctx context.Context, req *SubmitClusterRequest) (*SubmitClusterResponse, error) {
+	// Create the clientset
+	cs, err := platformclient.NewClientset(ctx, req.AWSConfig)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create clientset: %w", err)
+	}
+
 	// Make a copy of the payload to avoid modifying the original
 	payload := make(map[string]interface{})
 	for k, v := range req.Payload {
@@ -211,71 +215,33 @@ func SubmitCluster(ctx context.Context, req *SubmitClusterRequest) (*SubmitClust
 		}
 	}
 
-	// Marshal payload to JSON
+	// Convert the map payload to a typed Cluster object
+	// Marshal to JSON first, then unmarshal into the typed struct
 	payloadBytes, err := json.Marshal(payload)
 	if err != nil {
 		return nil, fmt.Errorf("failed to marshal payload: %w", err)
 	}
 
-	// Build the API endpoint URL
-	endpoint := fmt.Sprintf("%s/api/v0/clusters", req.PlatformAPIURL)
+	var cluster v1alpha1.Cluster
+	if err := json.Unmarshal(payloadBytes, &cluster); err != nil {
+		return nil, fmt.Errorf("failed to unmarshal into Cluster type: %w", err)
+	}
 
-	// Create HTTP request
-	httpReq, err := http.NewRequestWithContext(ctx, "POST", endpoint, bytes.NewReader(payloadBytes))
+	// Create the cluster via the SDK
+	created, err := cs.HyperfleetV1alpha1().Clusters().Create(ctx, &cluster, platform.CreateOptions{})
 	if err != nil {
-		return nil, fmt.Errorf("failed to create request: %w", err)
+		return nil, fmt.Errorf("failed to create cluster via SDK: %w", err)
 	}
 
-	httpReq.Header.Set("Content-Type", "application/json")
-
-	// Calculate SHA256 hash of the request body
-	hash := sha256.Sum256(payloadBytes)
-	payloadHash := hex.EncodeToString(hash[:])
-
-	// Sign the request with AWS SigV4
-	signer := v4.NewSigner()
-	creds, err := req.AWSConfig.Credentials.Retrieve(ctx)
+	// Convert the response back to map[string]interface{} for compatibility
+	responseBytes, err := json.Marshal(created)
 	if err != nil {
-		return nil, fmt.Errorf("failed to retrieve AWS credentials: %w", err)
+		return nil, fmt.Errorf("failed to marshal response: %w", err)
 	}
 
-	// Determine the region from AWS config
-	region := req.AWSConfig.Region
-	if region == "" {
-		region = "us-east-1" // Default region
-	}
-
-	err = signer.SignHTTP(ctx, creds, httpReq, payloadHash, "execute-api", region, time.Now())
-	if err != nil {
-		return nil, fmt.Errorf("failed to sign request: %w", err)
-	}
-
-	// Execute the request
-	client := &http.Client{
-		Timeout: 30 * time.Second,
-	}
-
-	resp, err := client.Do(httpReq)
-	if err != nil {
-		return nil, fmt.Errorf("failed to execute request: %w", err)
-	}
-	defer func() { _ = resp.Body.Close() }()
-
-	// Read the response body
-	body, err := io.ReadAll(resp.Body)
-	if err != nil {
-		return nil, fmt.Errorf("failed to read response: %w", err)
-	}
-
-	// Check for error responses
-	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
-		return nil, fmt.Errorf("API request failed with status %d: %s", resp.StatusCode, string(body))
-	}
-
-	// Parse the JSON response
 	var result map[string]interface{}
-	if err := json.Unmarshal(body, &result); err != nil {
-		return nil, fmt.Errorf("failed to parse response: %w", err)
+	if err := json.Unmarshal(responseBytes, &result); err != nil {
+		return nil, fmt.Errorf("failed to unmarshal response: %w", err)
 	}
 
 	return &SubmitClusterResponse{

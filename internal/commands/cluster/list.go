@@ -4,12 +4,12 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"net/url"
 	"os"
 	"text/tabwriter"
 
+	"github.com/openshift-online/rosa-hyperfleet-api/clientset/platform"
 	"github.com/openshift-online/rosa-regional-platform-cli/internal/aws"
-	"github.com/openshift-online/rosa-regional-platform-cli/internal/config"
+	platformclient "github.com/openshift-online/rosa-regional-platform-cli/internal/platform"
 	"github.com/spf13/cobra"
 )
 
@@ -44,13 +44,6 @@ type clusterItem struct {
 	Status    clusterStatus `json:"status"`
 }
 
-type listResponse struct {
-	Items  []clusterItem `json:"items"`
-	Total  int           `json:"total"`
-	Limit  int           `json:"limit"`
-	Offset int           `json:"offset"`
-}
-
 func newListCommand() *cobra.Command {
 	opts := &listOptions{
 		limit:  50,
@@ -82,53 +75,73 @@ Example:
 }
 
 func runList(ctx context.Context, opts *listOptions) error {
-	baseURL, err := config.GetPlatformAPIURL()
-	if err != nil {
-		return err
-	}
-
 	cfg, err := aws.NewConfig(ctx)
 	if err != nil {
 		return fmt.Errorf("failed to load AWS config: %w", err)
 	}
 
-	creds, err := cfg.Credentials.Retrieve(ctx)
+	if cfg.Region == "" {
+		cfg.Region = "us-east-1"
+	}
+
+	// Create the clientset
+	cs, err := platformclient.NewClientset(ctx, cfg)
 	if err != nil {
-		return fmt.Errorf("failed to retrieve AWS credentials: %w", err)
+		return fmt.Errorf("failed to create clientset: %w", err)
 	}
 
-	region := cfg.Region
-	if region == "" {
-		region = "us-east-1"
-	}
-
-	endpoint := fmt.Sprintf("%s/api/v0/clusters?limit=%d&offset=%d", baseURL, opts.limit, opts.offset)
-	if opts.status != "" {
-		endpoint = fmt.Sprintf("%s&status=%s", endpoint, url.QueryEscape(opts.status))
-	}
-
-	body, err := signedGet(ctx, endpoint, creds, region)
+	// List clusters via SDK
+	clusterList, err := cs.HyperfleetV1alpha1().Clusters().List(ctx, platform.ListOptions{
+		Limit:  int64(opts.limit),
+		Offset: int64(opts.offset),
+	})
 	if err != nil {
-		return err
+		return fmt.Errorf("failed to list clusters: %w", err)
 	}
 
 	if opts.output == "json" {
-		var result map[string]interface{}
-		if err := json.Unmarshal(body, &result); err != nil {
-			fmt.Println(string(body))
-			return nil
+		// Convert to JSON for output
+		resultBytes, err := json.MarshalIndent(clusterList, "", "  ")
+		if err != nil {
+			return fmt.Errorf("failed to marshal response: %w", err)
 		}
-		prettyJSON, _ := json.MarshalIndent(result, "", "  ")
-		fmt.Println(string(prettyJSON))
+		fmt.Println(string(resultBytes))
 		return nil
 	}
 
-	var result listResponse
-	if err := json.Unmarshal(body, &result); err != nil {
-		return fmt.Errorf("failed to parse response: %w", err)
+	// Convert typed list to clusterItem for table display
+	items := make([]clusterItem, 0, len(clusterList.Items))
+	for _, c := range clusterList.Items {
+		item := clusterItem{
+			ID:   string(c.UID),
+			Name: c.Name,
+			Spec: clusterSpec{
+				Version: c.Spec.HostedCluster.Release.Image,
+			},
+		}
+
+		// Extract conditions from status
+		if c.Status.Conditions != nil {
+			for _, cond := range c.Status.Conditions {
+				item.Status.Conditions = append(item.Status.Conditions, condition{
+					Type:    cond.Type,
+					Status:  string(cond.Status),
+					Message: cond.Message,
+				})
+			}
+		}
+
+		// Filter by status if specified
+		if opts.status != "" {
+			if getConditionStatus(item.Status.Conditions, opts.status) == "-" {
+				continue
+			}
+		}
+
+		items = append(items, item)
 	}
 
-	return displayTable(result.Items)
+	return displayTable(items)
 }
 
 func displayTable(clusters []clusterItem) error {

@@ -4,14 +4,14 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"net/url"
 	"os"
 	"strings"
 
-	awssdk "github.com/aws/aws-sdk-go-v2/aws"
+	v1alpha1 "github.com/openshift-online/rosa-hyperfleet-api/api/v1alpha1/public"
+	"github.com/openshift-online/rosa-hyperfleet-api/clientset/platform"
 	"github.com/openshift-online/rosa-regional-platform-cli/internal/aws"
 	"github.com/openshift-online/rosa-regional-platform-cli/internal/aws/cloudformation"
-	"github.com/openshift-online/rosa-regional-platform-cli/internal/config"
+	platformclient "github.com/openshift-online/rosa-regional-platform-cli/internal/platform"
 	"github.com/spf13/cobra"
 )
 
@@ -71,34 +71,30 @@ Examples:
 }
 
 func runCreate(ctx context.Context, opts *createOptions) error {
-	baseURL, err := config.GetPlatformAPIURL()
-	if err != nil {
-		return err
-	}
-
 	cfg, err := aws.NewConfig(ctx)
 	if err != nil {
 		return fmt.Errorf("failed to load AWS config: %w", err)
 	}
 
-	creds, err := cfg.Credentials.Retrieve(ctx)
-	if err != nil {
-		return fmt.Errorf("failed to retrieve AWS credentials: %w", err)
+	if cfg.Region == "" {
+		return aws.ErrRegionRequired
 	}
 
-	region := cfg.Region
-	if region == "" {
-		return aws.ErrRegionRequired
+	// Create the clientset
+	cs, err := platformclient.NewClientset(ctx, cfg)
+	if err != nil {
+		return fmt.Errorf("failed to create clientset: %w", err)
 	}
 
 	// Auto-discover infra from cluster spec and CloudFormation stacks.
 	if opts.subnetID == "" || opts.instanceProfile == "" || opts.securityGroups == "" {
-		cluster, err := fetchClusterSpec(ctx, baseURL, opts.clusterID, creds, region)
+		cluster, err := cs.HyperfleetV1alpha1().Clusters().Get(ctx, opts.clusterID, platform.GetOptions{})
 		if err != nil {
 			return fmt.Errorf("failed to fetch cluster spec for auto-discovery: %w", err)
 		}
+
 		if opts.subnetID == "" {
-			opts.subnetID = extractSubnetFromClusterSpec(cluster.Spec)
+			opts.subnetID = extractSubnetFromClusterSpec(cluster)
 		}
 		if opts.instanceProfile == "" || opts.securityGroups == "" {
 			cfnClient := cloudformation.NewClient(cfg)
@@ -140,9 +136,14 @@ func runCreate(ctx context.Context, opts *createOptions) error {
 		}
 	}
 
+	// Build the payload with Kubernetes-style structure
 	payload := map[string]interface{}{
-		"cluster_id": opts.clusterID,
-		"name":       opts.name,
+		"apiVersion": "hyperfleet.io/v1alpha1",
+		"kind":       "NodePool",
+		"metadata": map[string]interface{}{
+			"name":      opts.name,
+			"namespace": opts.clusterID, // NodePools are namespaced by cluster ID
+		},
 		"spec": map[string]interface{}{
 			"nodePool": map[string]interface{}{
 				"replicas": opts.replicas,
@@ -159,24 +160,33 @@ func runCreate(ctx context.Context, opts *createOptions) error {
 		},
 	}
 
+	// Convert map to typed NodePool via JSON marshal/unmarshal
 	payloadBytes, err := json.Marshal(payload)
 	if err != nil {
 		return fmt.Errorf("failed to marshal request: %w", err)
 	}
 
-	endpoint := fmt.Sprintf("%s/api/v0/nodepools", baseURL)
-	body, statusCode, err := signedPost(ctx, endpoint, payloadBytes, creds, region)
-	if err != nil {
-		return err
+	var nodepool v1alpha1.NodePool
+	if err := json.Unmarshal(payloadBytes, &nodepool); err != nil {
+		return fmt.Errorf("failed to unmarshal into NodePool type: %w", err)
 	}
 
-	if statusCode != 201 {
-		return fmt.Errorf("API request failed with status %d: %s", statusCode, string(body))
+	// Create the nodepool via SDK
+	// Note: NodePools are namespaced by cluster ID
+	created, err := cs.HyperfleetV1alpha1().NodePools(opts.clusterID).Create(ctx, &nodepool, platform.CreateOptions{})
+	if err != nil {
+		return fmt.Errorf("failed to create nodepool via SDK: %w", err)
+	}
+
+	// Convert response to map for display compatibility
+	responseBytes, err := json.Marshal(created)
+	if err != nil {
+		return fmt.Errorf("failed to marshal response: %w", err)
 	}
 
 	var result map[string]interface{}
-	if err := json.Unmarshal(body, &result); err != nil {
-		return fmt.Errorf("failed to parse response: %w", err)
+	if err := json.Unmarshal(responseBytes, &result); err != nil {
+		return fmt.Errorf("failed to unmarshal response: %w", err)
 	}
 
 	if opts.output == "json" {
@@ -187,10 +197,8 @@ func runCreate(ctx context.Context, opts *createOptions) error {
 
 	fmt.Fprintf(os.Stderr, "\n✓ NodePool created successfully\n")
 	fmt.Fprintf(os.Stderr, "\nNodePool Details:\n")
-	fmt.Fprintf(os.Stderr, "  Name:          %s\n", opts.name)
-	if id, ok := result["id"].(string); ok {
-		fmt.Fprintf(os.Stderr, "  ID:            %s\n", id)
-	}
+	fmt.Fprintf(os.Stderr, "  Name:          %s\n", created.Name)
+	fmt.Fprintf(os.Stderr, "  ID:            %s\n", string(created.UID))
 	fmt.Fprintf(os.Stderr, "  Cluster:       %s\n", opts.clusterID)
 	fmt.Fprintf(os.Stderr, "  Replicas:      %d\n", opts.replicas)
 	fmt.Fprintf(os.Stderr, "  Instance Type: %s\n", opts.instanceType)
@@ -198,50 +206,20 @@ func runCreate(ctx context.Context, opts *createOptions) error {
 	return nil
 }
 
-type clusterResponse struct {
-	ID   string                 `json:"id"`
-	Name string                 `json:"name"`
-	Spec map[string]interface{} `json:"spec"`
-}
+func extractSubnetFromClusterSpec(cluster *v1alpha1.Cluster) string {
+	if cluster == nil {
+		return ""
+	}
 
-func extractSubnetFromClusterSpec(spec map[string]interface{}) string {
-	hc, _ := spec["hostedCluster"].(map[string]interface{})
-	if hc == nil {
-		return ""
-	}
-	platform, _ := hc["platform"].(map[string]interface{})
-	if platform == nil {
-		return ""
-	}
-	awsPlat, _ := platform["aws"].(map[string]interface{})
+	awsPlat := cluster.Spec.HostedCluster.Platform.AWS
 	if awsPlat == nil {
 		return ""
 	}
-	cpc, _ := awsPlat["cloudProviderConfig"].(map[string]interface{})
-	if cpc == nil {
+
+	cpc := awsPlat.CloudProviderConfig
+	if cpc == nil || cpc.Subnet == nil || cpc.Subnet.ID == nil {
 		return ""
 	}
-	subnet, _ := cpc["subnet"].(map[string]interface{})
-	if subnet == nil {
-		return ""
-	}
-	id, _ := subnet["id"].(string)
-	return id
-}
 
-func fetchClusterSpec(ctx context.Context, baseURL, clusterID string, creds awssdk.Credentials, region string) (*clusterResponse, error) {
-	endpoint := fmt.Sprintf("%s/api/v0/clusters/%s", baseURL, url.PathEscape(clusterID))
-	body, statusCode, err := signedGet(ctx, endpoint, creds, region)
-	if err != nil {
-		return nil, err
-	}
-	if statusCode != 200 {
-		return nil, fmt.Errorf("failed to get cluster %s: status %d: %s", clusterID, statusCode, string(body))
-	}
-
-	var cluster clusterResponse
-	if err := json.Unmarshal(body, &cluster); err != nil {
-		return nil, fmt.Errorf("failed to parse cluster response: %w", err)
-	}
-	return &cluster, nil
+	return *cpc.Subnet.ID
 }
