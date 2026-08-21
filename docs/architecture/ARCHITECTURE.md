@@ -120,17 +120,40 @@ Lambda bootstrap is **optional** and used for CI/CD integration or event-driven 
 
 Command-line interface built with Cobra framework.
 
-**Cluster VPC Management**:
+**Authentication**:
+
+- `login` - Store the platform API base URL for future API calls
+
+**Cluster Management** (via platform API):
+
+- `cluster create` - Create a ROSA hosted cluster
+- `cluster delete` - Delete a cluster
+- `cluster list` - List clusters
+- `cluster kubeconfig` - Generate a kubeconfig for cluster access
+- `cluster get-token` - Obtain a token for cluster authentication
+
+**Node Pool Management** (via platform API):
+
+- `nodepool create` - Create a node pool for a cluster
+- `nodepool delete` - Delete a node pool
+- `nodepool list` - List node pools
+
+**Cluster VPC Management** (CloudFormation):
 
 - `cluster-vpc create` - Create VPC networking via CloudFormation
 - `cluster-vpc delete` - Delete VPC stack
 - `cluster-vpc list` - List all VPC stacks
 
-**Cluster IAM Management**:
+**Cluster IAM Management** (CloudFormation):
 
 - `cluster-iam create` - Create IAM resources (OIDC provider + roles)
 - `cluster-iam delete` - Delete IAM stack
 - `cluster-iam list` - List all IAM stacks
+
+**Cluster OIDC Management** (CloudFormation):
+
+- `cluster-oidc create` - Create IAM OIDC provider in a separate stack and update IAM roles trust policies
+- `cluster-oidc delete` - Delete OIDC provider stack
 
 **Optional Lambda Bootstrap**:
 
@@ -141,8 +164,10 @@ Command-line interface built with Cobra framework.
 
 Shared business logic used by both CLI commands and the Lambda handler:
 
-- `internal/services/clustervpc` - `CreateVPC()` and `DeleteVPC()` functions
+- `internal/services/cluster` - Platform API client for cluster CRUD and token operations
 - `internal/services/clusteriam` - `CreateIAM()` and `DeleteIAM()` functions
+- `internal/services/clusteroidc` - OIDC provider stack management and IAM trust policy updates
+- `internal/services/clustervpc` - `CreateVPC()` and `DeleteVPC()` functions
 
 The service layer accepts request structs with AWS config, making the same logic available to CLI commands and Lambda event handling without duplication.
 

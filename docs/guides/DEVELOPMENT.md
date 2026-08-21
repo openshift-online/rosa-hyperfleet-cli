@@ -325,10 +325,13 @@ rosa-hyperfleet-cli/
 │   │   ├── clustervpc/              # VPC management
 │   │   ├── handler/                 # Lambda handler entrypoint command
 │   │   ├── login/                   # Authentication
+│   │   ├── nodepool/                # Node pool management
 │   │   └── version/                 # Version command
 │   ├── services/                    # Shared business logic (used by CLI and Lambda)
-│   │   ├── clustervpc/              # VPC service (CreateVPC, DeleteVPC)
-│   │   └── clusteriam/              # IAM service (CreateIAM, DeleteIAM)
+│   │   ├── cluster/                 # Cluster service (platform API client)
+│   │   ├── clusteriam/              # IAM service (CreateIAM, DeleteIAM)
+│   │   ├── clusteroidc/             # OIDC service (provider stack management)
+│   │   └── clustervpc/              # VPC service (CreateVPC, DeleteVPC)
 │   ├── aws/
 │   │   └── cloudformation/          # CloudFormation client
 │   ├── cloudformation/
