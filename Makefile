@@ -1,4 +1,4 @@
-.PHONY: all build clean install test test-localstack test-deps help release release-dry-run fmt fmt-check vet lint verify docker-build localstack-up localstack-down localstack-logs localstack-health tidy
+.PHONY: all build clean install test test-localstack test-deps help release release-dry-run fmt fmt-check vet lint verify docker-build localstack-up localstack-down localstack-logs localstack-health tidy deps
 
 BINARY_NAME=rosactl
 BUILD_DIR=./bin
@@ -70,6 +70,12 @@ tidy:
 	@echo "Tidying go modules..."
 	@GOFLAGS=-mod=mod go mod tidy
 	@echo "✓ Tidy complete"
+
+deps:
+	@echo "Downloading and tidying go modules..."
+	@go mod download
+	@go mod tidy
+	@echo "✓ Dependencies updated"
 
 test:
 	@echo "Running unit tests..."
