@@ -234,11 +234,17 @@ func runCreateAndSubmit(ctx context.Context, opts *createOptions) error {
 		return err
 	}
 
+	iamLoginIssuer, err := clusterservice.ResolveIAMLoginIssuer(ctx, cfg)
+	if err != nil {
+		return err
+	}
+
 	// Submit cluster to platform API
 	submitReq := &clusterservice.SubmitClusterRequest{
-		Cluster:        genResp.Cluster,
-		PlatformAPIURL: baseURL,
-		AWSConfig:      cfg,
+		Cluster:           genResp.Cluster,
+		PlatformAPIURL:    baseURL,
+		IAMLoginIssuerURL: iamLoginIssuer,
+		AWSConfig:         cfg,
 	}
 
 	if opts.output != "json" {
@@ -320,11 +326,17 @@ func runCreateWithPayload(ctx context.Context, opts *createOptions) error {
 		}
 	}
 
+	iamLoginIssuer, err := clusterservice.ResolveIAMLoginIssuer(ctx, cfg)
+	if err != nil {
+		return err
+	}
+
 	// Build service request
 	req := &clusterservice.SubmitClusterRequest{
 		Cluster:           &cluster,
 		PlatformAPIURL:    baseURL,
 		PlacementOverride: placementOverride,
+		IAMLoginIssuerURL: iamLoginIssuer,
 		AWSConfig:         cfg,
 	}
 

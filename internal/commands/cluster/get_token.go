@@ -2,38 +2,43 @@ package cluster
 
 import (
 	"context"
-	"encoding/base64"
 	"encoding/json"
 	"fmt"
-	"net/http"
 	"os"
-	"strconv"
 	"time"
 
 	"github.com/aws/aws-sdk-go-v2/aws"
-	v4 "github.com/aws/aws-sdk-go-v2/aws/signer/v4"
 	"github.com/aws/aws-sdk-go-v2/service/sts"
-	smithyhttp "github.com/aws/smithy-go/transport/http"
 	iamaws "github.com/openshift-online/rosa-regional-platform-cli/internal/aws"
 	"github.com/spf13/cobra"
 )
 
 const (
-	v1Prefix        = "k8s-aws-v1."
-	clusterIDHeader = "x-k8s-aws-id"
-	// STS ignores X-Amz-Expires but aws-iam-authenticator server validates it is between 0 and 60.
-	requestPresignParam = 60
-	presignedURLExpiry  = 15 * time.Minute
+	// audiencePrefix scopes a token to a single cluster. The hosted KAS only
+	// accepts tokens whose aud is "rosa:cluster:<cluster-id>".
+	audiencePrefix = "rosa:cluster:"
+	// tokenDuration must stay within the KAS claim validation rule (exp - iat <= 900).
+	tokenDuration = 900 * time.Second
+	// tokenRefreshSkew makes kubectl request a new token before the KAS rejects it.
+	tokenRefreshSkew = time.Minute
 )
+
+// ClusterAudience returns the token audience for a cluster.
+func ClusterAudience(clusterID string) string {
+	return audiencePrefix + clusterID
+}
 
 func newGetTokenCommand() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "get-token --cluster-id <cluster-id>",
 		Short: "Generate an IAM authentication token for a cluster",
-		Long: `Generate a presigned STS GetCallerIdentity token for authenticating
-to a hosted cluster. This command is used as a kubectl exec credential plugin.
+		Long: `Request a short-lived JWT from AWS STS (sts:GetWebIdentityToken) for
+authenticating to a hosted cluster. This command is used as a kubectl exec
+credential plugin.
 
-It is equivalent to 'aws-iam-authenticator token -i <cluster-id>'.`,
+Requires IAM outbound identity federation to be enabled in the AWS account
+(aws iam enable-outbound-web-identity-federation) and the sts:GetWebIdentityToken
+permission.`,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			clusterID, _ := cmd.Flags().GetString("cluster-id")
 			if clusterID == "" {
@@ -54,53 +59,30 @@ func runGetToken(ctx context.Context, clusterID string) error {
 	if err != nil {
 		return fmt.Errorf("failed to load AWS config: %w", err)
 	}
-
-	stsClient := sts.NewFromConfig(cfg)
-	presignClient := sts.NewPresignClient(stsClient)
-
-	now := time.Now()
-	presigned, err := presignClient.PresignGetCallerIdentity(ctx, &sts.GetCallerIdentityInput{},
-		withPresignFixedTime(now),
-		func(po *sts.PresignOptions) {
-			po.ClientOptions = append(po.ClientOptions, func(o *sts.Options) {
-				o.APIOptions = append(o.APIOptions,
-					smithyhttp.SetHeaderValue(clusterIDHeader, clusterID),
-					smithyhttp.SetHeaderValue("X-Amz-Expires", strconv.Itoa(requestPresignParam)),
-				)
-			})
-		},
-	)
-	if err != nil {
-		return fmt.Errorf("failed to presign GetCallerIdentity: %w", err)
+	// GetWebIdentityToken is not served by the STS global endpoint.
+	if cfg.Region == "" {
+		return fmt.Errorf("an AWS region is required: GetWebIdentityToken is only available on regional STS endpoints")
 	}
 
-	token := v1Prefix + base64.RawURLEncoding.EncodeToString([]byte(presigned.URL))
-	expiration := now.Local().Add(presignedURLExpiry - 1*time.Minute)
+	out, err := sts.NewFromConfig(cfg).GetWebIdentityToken(ctx, &sts.GetWebIdentityTokenInput{
+		Audience:         []string{ClusterAudience(clusterID)},
+		SigningAlgorithm: aws.String("ES384"),
+		DurationSeconds:  aws.Int32(int32(tokenDuration.Seconds())),
+	})
+	if err != nil {
+		return fmt.Errorf("failed to get web identity token (is outbound identity federation enabled and sts:GetWebIdentityToken allowed?): %w", err)
+	}
 
-	out, _ := json.Marshal(execCredential(token, expiration))
-	if _, err := fmt.Fprint(os.Stdout, string(out)); err != nil {
+	expiration := time.Now().Add(tokenDuration)
+	if out.Expiration != nil {
+		expiration = *out.Expiration
+	}
+
+	credential, _ := json.Marshal(execCredential(aws.ToString(out.WebIdentityToken), expiration.Add(-tokenRefreshSkew)))
+	if _, err := fmt.Fprint(os.Stdout, string(credential)); err != nil {
 		return fmt.Errorf("writing token to stdout: %w", err)
 	}
 	return nil
-}
-
-type presignFixedTimeSigner struct {
-	p           sts.HTTPPresignerV4
-	signingTime time.Time
-}
-
-func (w *presignFixedTimeSigner) PresignHTTP(
-	ctx context.Context, credentials aws.Credentials, r *http.Request,
-	payloadHash string, service string, region string, _ time.Time,
-	optFns ...func(*v4.SignerOptions),
-) (string, http.Header, error) {
-	return w.p.PresignHTTP(ctx, credentials, r, payloadHash, service, region, w.signingTime, optFns...)
-}
-
-func withPresignFixedTime(t time.Time) func(*sts.PresignOptions) {
-	return func(o *sts.PresignOptions) {
-		o.Presigner = &presignFixedTimeSigner{p: o.Presigner, signingTime: t}
-	}
 }
 
 func execCredential(token string, expiration time.Time) map[string]interface{} {
