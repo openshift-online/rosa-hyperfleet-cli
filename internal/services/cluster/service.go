@@ -45,6 +45,7 @@ type SubmitClusterRequest struct {
 	Cluster           *v1alpha1.Cluster
 	PlatformAPIURL    string
 	PlacementOverride string // Optional - overrides placement in payload if set
+	IAMLoginIssuerURL string // Optional - enables AWS IAM login to the cluster's API server
 	AWSConfig         aws.Config
 }
 
@@ -239,6 +240,13 @@ func SubmitCluster(ctx context.Context, req *SubmitClusterRequest) (*SubmitClust
 			return nil, fmt.Errorf("failed to unmarshal modified cluster: %w", err)
 		}
 		cluster = &modifiedCluster
+	}
+
+	// Enable AWS IAM login unless the cluster already sets an issuer
+	if req.IAMLoginIssuerURL != "" && cluster.Spec.AWSIAMLoginIssuerURL == "" {
+		withIssuer := *cluster
+		withIssuer.Spec.AWSIAMLoginIssuerURL = req.IAMLoginIssuerURL
+		cluster = &withIssuer
 	}
 
 	// Load AWS config
