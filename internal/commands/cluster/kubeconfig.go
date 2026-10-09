@@ -29,7 +29,7 @@ type kubeconfigData struct {
 
 func newKubeconfigCommand() *cobra.Command {
 	cmd := &cobra.Command{
-		Use:   "kubeconfig <cluster-id|cluster-name>",
+		Use:   "kubeconfig <cluster-name>",
 		Short: "Generate a kubeconfig for a cluster using AWS IAM authentication",
 		Long: `Generate a kubeconfig that uses rosactl as an exec credential plugin
 for AWS IAM authentication. Pipe the output to a file and use with kubectl:
@@ -45,7 +45,7 @@ for AWS IAM authentication. Pipe the output to a file and use with kubectl:
 	return cmd
 }
 
-func runKubeconfig(ctx context.Context, nameOrID string) error {
+func runKubeconfig(ctx context.Context, clusterName string) error {
 	baseURL, err := config.GetPlatformAPIURL()
 	if err != nil {
 		return err
@@ -66,17 +66,17 @@ func runKubeconfig(ctx context.Context, nameOrID string) error {
 		region = "us-east-1"
 	}
 
-	cluster, err := fetchClusterByName(ctx, baseURL, nameOrID, creds, region)
+	cluster, err := fetchClusterByName(ctx, baseURL, clusterName, creds, region)
 	if err != nil {
 		return err
 	}
 
-	apiEndpoint, err := fetchAPIURL(ctx, baseURL, string(cluster.UID), creds, region)
+	apiEndpoint, err := fetchAPIURL(ctx, baseURL, cluster.Name, creds, region)
 	if err != nil {
 		return err
 	}
 	if apiEndpoint == "" {
-		return fmt.Errorf("cluster %q API endpoint not available yet", nameOrID)
+		return fmt.Errorf("cluster %q API endpoint not available yet", clusterName)
 	}
 
 	rosactlPath, _ := os.Executable()

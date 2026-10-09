@@ -13,7 +13,7 @@ import (
 	pkgconfig "github.com/openshift-online/rosa-regional-platform-cli/internal/config"
 )
 
-func fetchAPIURL(ctx context.Context, baseURL, clusterID string, creds awssdk.Credentials, region string) (string, error) {
+func fetchAPIURL(ctx context.Context, baseURL, clusterName string, creds awssdk.Credentials, region string) (string, error) {
 	// Load AWS config for clientset
 	awsCfg, err := awsconfig.LoadDefaultConfig(ctx)
 	if err != nil {
@@ -36,9 +36,9 @@ func fetchAPIURL(ctx context.Context, baseURL, clusterID string, creds awssdk.Cr
 	}
 
 	// Get cluster to access status
-	cluster, err := cs.HyperfleetV1alpha1().Clusters().Get(ctx, clusterID, platform.GetOptions{})
+	cluster, err := cs.HyperfleetV1alpha1().Clusters().Get(ctx, clusterName, platform.GetOptions{})
 	if err != nil {
-		return "", fmt.Errorf("failed to fetch cluster: %w", err)
+		return "", fmt.Errorf("failed to fetch cluster %q: %w", clusterName, err)
 	}
 
 	if cluster.Status.ControlPlaneEndpoint.Host != "" {
@@ -48,7 +48,7 @@ func fetchAPIURL(ctx context.Context, baseURL, clusterID string, creds awssdk.Cr
 	return "", nil
 }
 
-func fetchClusterByName(ctx context.Context, baseURL, name string, creds awssdk.Credentials, region string) (*v1alpha1.Cluster, error) {
+func fetchClusterByName(ctx context.Context, baseURL, clusterName string, creds awssdk.Credentials, region string) (*v1alpha1.Cluster, error) {
 	awsCfg, err := awsconfig.LoadDefaultConfig(ctx)
 	if err != nil {
 		return nil, fmt.Errorf("failed to load AWS config: %w", err)
@@ -68,28 +68,9 @@ func fetchClusterByName(ctx context.Context, baseURL, name string, creds awssdk.
 		return nil, fmt.Errorf("failed to create clientset: %w", err)
 	}
 
-	const pageSize = 100
-	for offset := int64(0); ; offset += pageSize {
-		listOpts := platform.ListOptions{
-			Limit:  pageSize,
-			Offset: offset,
-		}
-
-		clusterList, err := cs.HyperfleetV1alpha1().Clusters().List(ctx, listOpts)
-		if err != nil {
-			return nil, fmt.Errorf("failed to list clusters: %w", err)
-		}
-
-		for i := range clusterList.Items {
-			c := &clusterList.Items[i]
-			if c.Name == name || string(c.UID) == name {
-				return c, nil
-			}
-		}
-
-		if len(clusterList.Items) < int(pageSize) {
-			break
-		}
+	cluster, err := cs.HyperfleetV1alpha1().Clusters().Get(ctx, clusterName, platform.GetOptions{})
+	if err != nil {
+		return nil, fmt.Errorf("failed to get cluster %q: %w", clusterName, err)
 	}
-	return nil, fmt.Errorf("cluster %q not found", name)
+	return cluster, nil
 }

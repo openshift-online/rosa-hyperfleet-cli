@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"os"
+	"strings"
 
 	awsconfig "github.com/aws/aws-sdk-go-v2/config"
 	hyperfleet "github.com/openshift-online/rosa-hyperfleet-api/clientset"
@@ -16,34 +17,34 @@ import (
 )
 
 type deleteOptions struct {
-	clusterID string
+	clusterName string
 }
 
 func newDeleteCommand() *cobra.Command {
 	opts := &deleteOptions{}
 
 	cmd := &cobra.Command{
-		Use:   "delete NODEPOOL_ID",
+		Use:   "delete NODEPOOL_NAME",
 		Short: "Delete a node pool",
 		Long: `Delete a node pool from a ROSA hosted cluster.
 
 Examples:
-  rosactl nodepool delete <nodepool-id> --cluster-id <cluster-id> --region us-east-1`,
+  rosactl nodepool delete my-cluster.my-nodepool --cluster-name my-cluster --region us-east-1`,
 		Args: cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			if opts.clusterID == "" {
-				return fmt.Errorf("--cluster-id is required")
+			if opts.clusterName == "" {
+				return fmt.Errorf("--cluster-name is required")
 			}
 			return runDelete(cmd.Context(), args[0], opts)
 		},
 	}
 
-	cmd.Flags().StringVar(&opts.clusterID, "cluster-id", "", "Cluster ID (required)")
+	cmd.Flags().StringVar(&opts.clusterName, "cluster-name", "", "Account-scoped Cluster name (required)")
 
 	return cmd
 }
 
-func runDelete(ctx context.Context, nodepoolID string, opts *deleteOptions) error {
+func runDelete(ctx context.Context, nodepoolName string, opts *deleteOptions) error {
 	baseURL, err := config.GetPlatformAPIURL()
 	if err != nil {
 		return err
@@ -80,15 +81,25 @@ func runDelete(ctx context.Context, nodepoolID string, opts *deleteOptions) erro
 		return fmt.Errorf("failed to create clientset: %w", err)
 	}
 
-	// Delete nodepool via clientset (namespace = cluster-<uuid> format)
-	namespace := "cluster-" + opts.clusterID
-	if err := cs.HyperfleetV1alpha1().NodePools(namespace).Delete(ctx, nodepoolID, platform.DeleteOptions{}); err != nil {
+	nodepools := cs.HyperfleetV1alpha1().NodePools()
+	nodepool, err := nodepools.Get(ctx, nodepoolName, platform.GetOptions{})
+	if err != nil {
 		if k8serrors.IsNotFound(err) {
-			return fmt.Errorf("nodepool %q not found", nodepoolID)
+			return fmt.Errorf("nodepool %q not found", nodepoolName)
 		}
-		return fmt.Errorf("failed to delete nodepool: %w", err)
+		return fmt.Errorf("failed to get nodepool %q: %w", nodepoolName, err)
+	}
+	if !strings.HasPrefix(nodepool.Name, opts.clusterName+".") {
+		return fmt.Errorf("nodepool %q does not belong to cluster %q", nodepoolName, opts.clusterName)
 	}
 
-	fmt.Fprintf(os.Stderr, "✓ NodePool %s deletion initiated\n", nodepoolID)
+	if err := nodepools.Delete(ctx, nodepool.Name, platform.DeleteOptions{}); err != nil {
+		if k8serrors.IsNotFound(err) {
+			return fmt.Errorf("nodepool %q not found", nodepoolName)
+		}
+		return fmt.Errorf("failed to delete nodepool %q: %w", nodepoolName, err)
+	}
+
+	fmt.Fprintf(os.Stderr, "✓ NodePool %s deletion initiated\n", nodepoolName)
 	return nil
 }

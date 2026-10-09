@@ -27,11 +27,11 @@ func newDeleteCommand() *cobra.Command {
 	opts := &deleteOptions{}
 
 	cmd := &cobra.Command{
-		Use:   "delete <cluster-id|cluster-name>",
+		Use:   "delete <cluster-name>",
 		Short: "Delete a hosted cluster",
 		Long: `Delete a ROSA hosted cluster via the platform API.
 
-The cluster is identified by name or ID. A confirmation prompt is shown
+The cluster is identified by its account-scoped name. A confirmation prompt is shown
 unless --yes is passed. Use --wait to poll until the cluster is fully
 removed.
 
@@ -51,7 +51,7 @@ Examples:
 	return cmd
 }
 
-func runDeleteCluster(ctx context.Context, nameOrID string, opts *deleteOptions) error {
+func runDeleteCluster(ctx context.Context, clusterName string, opts *deleteOptions) error {
 	baseURL, err := config.GetPlatformAPIURL()
 	if err != nil {
 		return err
@@ -88,12 +88,12 @@ func runDeleteCluster(ctx context.Context, nameOrID string, opts *deleteOptions)
 		return fmt.Errorf("failed to create clientset: %w", err)
 	}
 
-	// Resolve name → ID if needed (fetchClusterByName matches on both name and ID)
-	// Note: fetchClusterByName creates its own clientset internally
-	creds, _ := awsCfg.Credentials.Retrieve(ctx)
-	cluster, err := fetchClusterByName(ctx, baseURL, nameOrID, creds, region)
+	cluster, err := cs.HyperfleetV1alpha1().Clusters().Get(ctx, clusterName, platform.GetOptions{})
 	if err != nil {
-		return err
+		if k8serrors.IsNotFound(err) {
+			return fmt.Errorf("cluster %q not found", clusterName)
+		}
+		return fmt.Errorf("failed to get cluster %q: %w", clusterName, err)
 	}
 
 	if !opts.yes {
@@ -110,9 +110,9 @@ func runDeleteCluster(ctx context.Context, nameOrID string, opts *deleteOptions)
 	}
 
 	// Delete cluster via clientset
-	if err := cs.HyperfleetV1alpha1().Clusters().Delete(ctx, string(cluster.UID), platform.DeleteOptions{}); err != nil {
+	if err := cs.HyperfleetV1alpha1().Clusters().Delete(ctx, cluster.Name, platform.DeleteOptions{}); err != nil {
 		if k8serrors.IsNotFound(err) {
-			return fmt.Errorf("cluster %q not found (may have already been deleted)", nameOrID)
+			return fmt.Errorf("cluster %q not found (may have already been deleted)", cluster.Name)
 		}
 		return fmt.Errorf("failed to delete cluster: %w", err)
 	}
@@ -133,7 +133,7 @@ func runDeleteCluster(ctx context.Context, nameOrID string, opts *deleteOptions)
 	for time.Now().Before(deadline) {
 		time.Sleep(pollInterval)
 
-		_, err := cs.HyperfleetV1alpha1().Clusters().Get(ctx, string(cluster.UID), platform.GetOptions{})
+		_, err := cs.HyperfleetV1alpha1().Clusters().Get(ctx, cluster.Name, platform.GetOptions{})
 		if err != nil {
 			if k8serrors.IsNotFound(err) {
 				fmt.Fprintf(os.Stderr, "Cluster %q deleted successfully.\n", cluster.Name)

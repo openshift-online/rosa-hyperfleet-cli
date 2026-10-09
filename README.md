@@ -36,13 +36,13 @@ rosactl cluster-oidc create my-cluster \
   --oidc-issuer-url <issuer-url-from-cluster-create>
 
 # Create a node pool
-rosactl nodepool create my-np --cluster-id <cluster-id>
+rosactl nodepool create my-cluster.my-np --cluster-name my-cluster
 
 # Get kubeconfig
 rosactl cluster kubeconfig my-cluster > ~/.kube/my-cluster
 
 # Teardown (reverse order)
-rosactl nodepool delete <nodepool-id>
+rosactl nodepool delete my-cluster.my-np --cluster-name my-cluster
 rosactl cluster-oidc delete my-cluster
 rosactl cluster-iam delete my-cluster
 rosactl cluster-vpc delete my-cluster
@@ -265,11 +265,11 @@ rosactl cluster-oidc delete my-cluster --region us-east-1
 #### create
 
 ```bash
-rosactl nodepool create my-np --cluster-id <cluster-id> --region us-east-1
+rosactl nodepool create my-cluster.my-np --cluster-name my-cluster --region us-east-1
 
 # With explicit settings
-rosactl nodepool create my-np \
-  --cluster-id <cluster-id> \
+rosactl nodepool create my-cluster.my-np \
+  --cluster-name my-cluster \
   --replicas 3 \
   --instance-type m5.2xlarge \
   --region us-east-1
@@ -277,7 +277,7 @@ rosactl nodepool create my-np \
 
 | Flag                 | Default      | Description                                         |
 | -------------------- | ------------ | --------------------------------------------------- |
-| `--cluster-id`       |              | Cluster ID (required)                               |
+| `--cluster-name`     |              | Account-scoped Cluster name (required)              |
 | `--replicas`         | `2`          | Number of worker replicas                           |
 | `--instance-type`    | `m6a.xlarge` | EC2 instance type                                   |
 | `--subnet-id`        |              | Subnet ID (auto-discovered from cluster if omitted) |
@@ -288,13 +288,13 @@ rosactl nodepool create my-np \
 #### list
 
 ```bash
-rosactl nodepool list --cluster-id <cluster-id>
-rosactl nodepool list --cluster-id <cluster-id> --output json
+rosactl nodepool list --cluster-name my-cluster
+rosactl nodepool list --cluster-name my-cluster --output json
 ```
 
 | Flag             | Default | Description                      |
 | ---------------- | ------- | -------------------------------- |
-| `--cluster-id`   |         | Cluster ID (required)            |
+| `--cluster-name` |         | Account-scoped Cluster name      |
 | `--limit`        | `50`    | Max results (1-100)              |
 | `--offset`       | `0`     | Number to skip                   |
 | `-o`, `--output` | `table` | Output format: `table` or `json` |
@@ -302,7 +302,7 @@ rosactl nodepool list --cluster-id <cluster-id> --output json
 #### delete
 
 ```bash
-rosactl nodepool delete <nodepool-id>
+rosactl nodepool delete my-cluster.my-np --cluster-name my-cluster
 ```
 
 ### bootstrap (optional)

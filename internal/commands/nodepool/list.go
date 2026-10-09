@@ -5,9 +5,11 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
+	"strings"
 	"text/tabwriter"
 
 	awsconfig "github.com/aws/aws-sdk-go-v2/config"
+	v1alpha1 "github.com/openshift-online/rosa-hyperfleet-api/api/v1alpha1/public"
 	hyperfleet "github.com/openshift-online/rosa-hyperfleet-api/clientset"
 	"github.com/openshift-online/rosa-hyperfleet-api/clientset/platform"
 	hfrest "github.com/openshift-online/rosa-hyperfleet-api/clientset/rest"
@@ -17,10 +19,10 @@ import (
 )
 
 type listOptions struct {
-	clusterID string
-	limit     int
-	offset    int
-	output    string
+	clusterName string
+	limit       int
+	offset      int
+	output      string
 }
 
 func newListCommand() *cobra.Command {
@@ -35,11 +37,11 @@ func newListCommand() *cobra.Command {
 		Long: `List node pools for a ROSA hosted cluster.
 
 Examples:
-  rosactl nodepool list --cluster-id <id>
-  rosactl nodepool list --cluster-id <id> --output json`,
+  rosactl nodepool list --cluster-name <name>
+  rosactl nodepool list --cluster-name <name> --output json`,
 		RunE: func(cmd *cobra.Command, args []string) error {
-			if opts.clusterID == "" {
-				return fmt.Errorf("--cluster-id is required")
+			if opts.clusterName == "" {
+				return fmt.Errorf("--cluster-name is required")
 			}
 			if opts.limit < 1 || opts.limit > 100 {
 				return fmt.Errorf("--limit must be between 1 and 100")
@@ -51,7 +53,7 @@ Examples:
 		},
 	}
 
-	cmd.Flags().StringVar(&opts.clusterID, "cluster-id", "", "Cluster ID (required)")
+	cmd.Flags().StringVar(&opts.clusterName, "cluster-name", "", "Account-scoped Cluster name (required)")
 	cmd.Flags().IntVar(&opts.limit, "limit", opts.limit, "Maximum number of nodepools to return (1-100)")
 	cmd.Flags().IntVar(&opts.offset, "offset", opts.offset, "Number of nodepools to skip")
 	cmd.Flags().StringVarP(&opts.output, "output", "o", "table", "Output format: table or json")
@@ -96,20 +98,26 @@ func runList(ctx context.Context, opts *listOptions) error {
 		return fmt.Errorf("failed to create clientset: %w", err)
 	}
 
-	// List nodepools via clientset (namespace = cluster-<uuid> format)
-	listOpts := platform.ListOptions{
-		Limit:  int64(opts.limit),
-		Offset: int64(opts.offset),
+	// The NodePool API is account-scoped. Filter the account's pages by the
+	// validated <cluster-name>.<child-name> convention, then apply pagination
+	// to that cluster's results.
+	const pageSize = int64(100)
+	nodepools := cs.HyperfleetV1alpha1().NodePools()
+	var clusterNodePools []v1alpha1.NodePool
+	for offset := int64(0); ; offset += pageSize {
+		page, err := nodepools.List(ctx, platform.NodePoolListOptions{Limit: pageSize, Offset: offset})
+		if err != nil {
+			return fmt.Errorf("failed to list nodepools: %w", err)
+		}
+		clusterNodePools = append(clusterNodePools, filterNodePoolsByClusterName(page.Items, opts.clusterName)...)
+		if len(page.Items) < int(pageSize) {
+			break
+		}
 	}
-
-	namespace := "cluster-" + opts.clusterID
-	nodepoolList, err := cs.HyperfleetV1alpha1().NodePools(namespace).List(ctx, listOpts)
-	if err != nil {
-		return fmt.Errorf("failed to list nodepools: %w", err)
-	}
+	clusterNodePools = paginateNodePools(clusterNodePools, opts.offset, opts.limit)
 
 	if opts.output == "json" {
-		prettyJSON, err := json.MarshalIndent(nodepoolList.Items, "", "  ")
+		prettyJSON, err := json.MarshalIndent(clusterNodePools, "", "  ")
 		if err != nil {
 			return fmt.Errorf("failed to marshal JSON: %w", err)
 		}
@@ -122,7 +130,7 @@ func runList(ctx context.Context, opts *listOptions) error {
 		return err
 	}
 
-	for _, np := range nodepoolList.Items {
+	for _, np := range clusterNodePools {
 		replicas := "-"
 		instanceType := "-"
 		phase := string(np.Status.Phase)
@@ -144,4 +152,20 @@ func runList(ctx context.Context, opts *listOptions) error {
 	}
 
 	return w.Flush()
+}
+
+func filterNodePoolsByClusterName(nodepools []v1alpha1.NodePool, clusterName string) []v1alpha1.NodePool {
+	filtered := make([]v1alpha1.NodePool, 0, len(nodepools))
+	for _, nodepool := range nodepools {
+		if strings.HasPrefix(nodepool.Name, clusterName+".") {
+			filtered = append(filtered, nodepool)
+		}
+	}
+	return filtered
+}
+
+func paginateNodePools(nodepools []v1alpha1.NodePool, offset, limit int) []v1alpha1.NodePool {
+	start := min(offset, len(nodepools))
+	end := min(start+limit, len(nodepools))
+	return nodepools[start:end]
 }
