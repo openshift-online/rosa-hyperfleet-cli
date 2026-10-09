@@ -21,7 +21,7 @@ import (
 
 type createOptions struct {
 	name            string
-	clusterID       string
+	clusterName     string
 	replicas        int
 	instanceType    string
 	subnetID        string
@@ -46,15 +46,18 @@ they are auto-discovered from the cluster's spec.
 
 Examples:
   # Create with defaults (auto-discover infra from cluster)
-  rosactl nodepool create my-nodepool --cluster-id <id> --region us-east-1
+  rosactl nodepool create my-cluster.my-nodepool --cluster-name my-cluster --region us-east-1
 
   # Create with explicit settings
-  rosactl nodepool create my-nodepool --cluster-id <id> --replicas 3 --instance-type m5.2xlarge`,
+  rosactl nodepool create my-cluster.my-nodepool --cluster-name my-cluster --replicas 3 --instance-type m5.2xlarge`,
 		Args: cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			opts.name = args[0]
-			if opts.clusterID == "" {
-				return fmt.Errorf("--cluster-id is required")
+			if opts.clusterName == "" {
+				return fmt.Errorf("--cluster-name is required")
+			}
+			if !strings.HasPrefix(opts.name, opts.clusterName+".") {
+				return fmt.Errorf("nodepool %q does not belong to cluster %q", opts.name, opts.clusterName)
 			}
 			if opts.replicas < 1 {
 				return fmt.Errorf("--replicas must be at least 1")
@@ -63,7 +66,7 @@ Examples:
 		},
 	}
 
-	cmd.Flags().StringVar(&opts.clusterID, "cluster-id", "", "Cluster ID (required)")
+	cmd.Flags().StringVar(&opts.clusterName, "cluster-name", "", "Account-scoped Cluster name (required)")
 	cmd.Flags().IntVar(&opts.replicas, "replicas", opts.replicas, "Number of worker replicas")
 	cmd.Flags().StringVar(&opts.instanceType, "instance-type", opts.instanceType, "EC2 instance type")
 	cmd.Flags().StringVar(&opts.subnetID, "subnet-id", "", "Subnet ID (auto-discovered from cluster if omitted)")
@@ -97,7 +100,7 @@ func runCreate(ctx context.Context, opts *createOptions) error {
 
 	// Auto-discover infra from cluster spec and CloudFormation stacks.
 	if opts.subnetID == "" || opts.instanceProfile == "" || opts.securityGroups == "" {
-		cluster, err := fetchClusterSpec(ctx, baseURL, opts.clusterID, creds, region)
+		cluster, err := fetchClusterSpec(ctx, baseURL, opts.clusterName, creds, region)
 		if err != nil {
 			return fmt.Errorf("failed to fetch cluster spec for auto-discovery: %w", err)
 		}
@@ -147,7 +150,7 @@ func runCreate(ctx context.Context, opts *createOptions) error {
 	payload := map[string]interface{}{
 		"metadata": map[string]interface{}{
 			"name": opts.name,
-			// namespace is automatically set by clientset from NodePools(clusterID) parameter
+			// The platform API assigns the authenticated account namespace on write.
 		},
 		"spec": map[string]interface{}{
 			"nodePool": map[string]interface{}{
@@ -197,10 +200,9 @@ func runCreate(ctx context.Context, opts *createOptions) error {
 		return fmt.Errorf("failed to create clientset: %w", err)
 	}
 
-	// Create nodepool via clientset (namespace = cluster-<uuid> format)
-	// The API expects the namespace in "cluster-<uuid>" format
-	namespace := "cluster-" + opts.clusterID
-	createdNodepool, err := cs.HyperfleetV1alpha1().NodePools(namespace).Create(ctx, &nodepool, platform.CreateOptions{})
+	// An empty client namespace keeps the account ID from client configuration on
+	// the request; the API sets the canonical account namespace on write.
+	createdNodepool, err := cs.HyperfleetV1alpha1().NodePools().Create(ctx, &nodepool, platform.CreateOptions{})
 	if err != nil {
 		return fmt.Errorf("failed to create nodepool: %w", err)
 	}
@@ -218,7 +220,7 @@ func runCreate(ctx context.Context, opts *createOptions) error {
 	fmt.Fprintf(os.Stderr, "\nNodePool Details:\n")
 	fmt.Fprintf(os.Stderr, "  Name:          %s\n", opts.name)
 	fmt.Fprintf(os.Stderr, "  ID:            %s\n", string(createdNodepool.UID))
-	fmt.Fprintf(os.Stderr, "  Cluster:       %s\n", opts.clusterID)
+	fmt.Fprintf(os.Stderr, "  Cluster:       %s\n", opts.clusterName)
 	fmt.Fprintf(os.Stderr, "  Replicas:      %d\n", opts.replicas)
 	fmt.Fprintf(os.Stderr, "  Instance Type: %s\n", opts.instanceType)
 
@@ -235,7 +237,7 @@ func extractSubnetFromClusterSpec(cluster *v1alpha1.Cluster) string {
 	return ""
 }
 
-func fetchClusterSpec(ctx context.Context, baseURL, clusterID string, creds awssdk.Credentials, region string) (*v1alpha1.Cluster, error) {
+func fetchClusterSpec(ctx context.Context, baseURL, clusterName string, creds awssdk.Credentials, region string) (*v1alpha1.Cluster, error) {
 	awsCfg, err := awsconfig.LoadDefaultConfig(ctx)
 	if err != nil {
 		return nil, fmt.Errorf("failed to load AWS config: %w", err)
@@ -255,9 +257,9 @@ func fetchClusterSpec(ctx context.Context, baseURL, clusterID string, creds awss
 		return nil, fmt.Errorf("failed to create clientset: %w", err)
 	}
 
-	cluster, err := cs.HyperfleetV1alpha1().Clusters().Get(ctx, clusterID, platform.GetOptions{})
+	cluster, err := cs.HyperfleetV1alpha1().Clusters().Get(ctx, clusterName, platform.GetOptions{})
 	if err != nil {
-		return nil, fmt.Errorf("failed to get cluster %s: %w", clusterID, err)
+		return nil, fmt.Errorf("failed to get cluster %s: %w", clusterName, err)
 	}
 
 	return cluster, nil
