@@ -474,7 +474,7 @@ See [docs/architecture/ARCHITECTURE.md](docs/architecture/ARCHITECTURE.md) for f
 
 ## Prerequisites
 
-- **Go 1.25+** (building from source)
+- **Go 1.26+** (building from source)
 - **AWS credentials** (see [Configuration](#configuration))
 - **AWS IAM permissions**:
   - CloudFormation: `CreateStack`, `UpdateStack`, `DeleteStack`, `DescribeStacks`, `ListStacks`, `DescribeStackEvents`, `DescribeStackResources`, `ListStackResources`
