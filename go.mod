@@ -17,7 +17,7 @@ require (
 	github.com/aws/aws-sdk-go-v2/service/route53 v1.65.9
 	github.com/aws/aws-sdk-go-v2/service/sts v1.45.7
 	github.com/aws/smithy-go v1.27.9
-	github.com/onsi/ginkgo/v2 v2.29.0
+	github.com/onsi/ginkgo/v2 v2.33.1
 	github.com/onsi/gomega v1.42.1
 	github.com/openshift-online/rosa-hyperfleet-api/api v0.1.20
 	github.com/openshift-online/rosa-hyperfleet-api/clientset v0.1.19
