@@ -181,7 +181,7 @@ See [DOCUMENTATION.md](guides/DOCUMENTATION.md) for detailed guidelines.
 - [LocalStack Testing Guide](../test/localstack/README.md) - Integration testing guide
 - [Makefile](../Makefile) - Build targets and commands
 - [GitHub Repository](https://github.com/openshift-online/rosa-seaplane-cli)
-- [ROSA HyperFleet Platform](https://github.com/openshift-online/rosa-seaplane) - Reference implementation
+- [ROSA Seaplane](https://github.com/openshift-online/rosa-seaplane) - Reference implementation
 - [HyperShift](https://github.com/openshift/hypershift) - OIDC implementation reference
 
 ---

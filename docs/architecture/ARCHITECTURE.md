@@ -395,7 +395,7 @@ Users can view:
 
 ## References
 
-- [ROSA HyperFleet Platform](https://github.com/openshift-online/rosa-seaplane)
+- [ROSA Seaplane](https://github.com/openshift-online/rosa-seaplane)
 - [HyperShift OIDC Implementation](https://github.com/openshift/hypershift)
 - [AWS CloudFormation Best Practices](https://docs.aws.amazon.com/AWSCloudFormation/latest/UserGuide/best-practices.html)
 - [AWS Lambda Container Images](https://docs.aws.amazon.com/lambda/latest/dg/images-create.html)
